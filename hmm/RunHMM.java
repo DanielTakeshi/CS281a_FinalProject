@@ -1,6 +1,6 @@
 package hmm;
 
-import edu.berkeley.nlp.util.*;
+import utilities.*;
 import java.util.*;
 
 /**
@@ -20,36 +20,60 @@ import java.util.*;
 public class RunHMM {
     
     public static final int NUM_OBSERVATIONS = 10;
-    private static List<Observation> observations;
+    //private static List<Observation> observations;
 
 	public static void main(String[] args) {
+	    System.out.println("*** Now starting up the HMM code ***");
+	    /*
+	    boolean verbose = false;
 		Map<String, String> argMap = CommandLineUtils.simpleCommandLineParser(args);
-		// TODO use argMap for parsing command line arguments
-		NullHypothesis nullHypothesis = new NullHypothesis();
+		if (argMap.containsKey("-verbose")) {
+		    verbose = true;
+		}
+		*/
 		ResearchDevelopmentHMM rdHMM = new ResearchDevelopmentHMM();
-		observations = generateObservationSequence(nullHypothesis, rdHMM);
-		runSequence(observations, nullHypothesis, rdHMM);
+		System.out.println("Here's the RD HMM:\n");
+		rdHMM.printRD();
+		System.out.println();
+		generateObservationSequence(rdHMM);
 	}
 	
 	/**
 	 * 
-	 * @param nullHypothesis
-	 * @param rdHMM
-	 * @return
-	 */
-	private static List<Observation> generateObservationSequence(NullHypothesis nullHypothesis, ResearchDevelopmentHMM rdHMM) {
-	    // TODO implement
-	    return null;
-	}
-	
-	/**
-	 * 
-	 * @param observations
-	 * @param nullHypothesis
 	 * @param rdHMM
 	 */
-	private static void runSequence(List<Observation> observations, NullHypothesis nullHypothesis, ResearchDevelopmentHMM rdHMM) {
-	    // TODO implement
+	private static void generateObservationSequence(ResearchDevelopmentHMM rdHMM) {
+	    Random rand = new Random();
+	    State state = rdHMM.root;
+	    int obsIndex = 0;
+	    while (!state.isEndState()) {
+	        obsIndex++;
+	        System.out.println("\nObservation Index = " + obsIndex);
+	        System.out.println("Current state: " + state.toString());
+	        double probability = rand.nextDouble();
+	        System.out.println("Value drawn was " + probability);
+	        if (probability <= state.getSelfLoopProb()) {
+	            continue;
+	        }
+	        double[] probThresh = new double[state.numChildren() + 1];
+	        probThresh[0] = state.getSelfLoopProb();
+	        for (int child = 1; child <= state.numChildren(); child++) {
+	            probThresh[child] = probThresh[child-1] + state.getProbabilities().get(child-1);
+	        }
+	        boolean newState = false;
+	        for (int i = 1; i < probThresh.length; i++) {
+	            if (newState) continue;
+	            if (i <= probThresh[i]) {
+	                state = state.getChildren().get(i-1); // Little confusing
+	                newState = true;
+	            }
+	        }
+	        if(!newState) {
+	            System.out.println("ERROR: newState is false");
+	            System.exit(0);
+	        }
+	    }
+	    System.out.println("Final state: " + state.toString());
 	}
-	
+
 }
