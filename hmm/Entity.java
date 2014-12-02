@@ -7,14 +7,14 @@ package hmm;
  */
 public class Entity {
 
-    enum EntityType {
+    public enum EntityType {
         PERSON, PLACE, OBJECT
     }
     
-    EntityType entityType;
+    EntityType eType;
     
-    public Entity(EntityType entityType) {
-        this.entityType = entityType;
+    public Entity(EntityType eType) {
+        this.eType = eType;
     }
 
 }
