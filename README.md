@@ -16,7 +16,12 @@ see <http://www.gnu.org/licenses/>.
 
 ---------------------------------------------------------------------------------------------------
 
-*important* TODO With a new goal in mind, do some more research to see if anyone's done something like this.
+*TODO*
+
+(1) with a new goal in mind, do some more research to see if anyone's done something like this.
+(2) study sequential likelihood ratio test and cumulative sum test
+(3) implement something!!!
+(4) continue with background reading
 
 ***The Plan***
 
