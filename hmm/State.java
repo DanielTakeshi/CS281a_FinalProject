@@ -3,7 +3,8 @@ package hmm;
 import java.util.*;
 
 /**
- * 
+ * This represents a state object in our HMM-space (similar to other graph classes). This class
+ * is fairly old and may not be used in my final version but I'll keep it here just in case.
  * 
  * @author Daniel Seita
  */
@@ -30,6 +31,10 @@ class State {
     public double getSelfLoopProb() {
         return this.selfLoopProbability;
     }
+
+    public boolean isEndState() {
+        return this.isTerminal;
+    }
     
     /**
      * @return The list of children, not including itself.
@@ -44,11 +49,7 @@ class State {
     public List<Double> getProbabilities() {
         return this.childProbabilities;
     }
-
-    public boolean isEndState() {
-        return this.isTerminal;
-    }
-    
+   
     /**
      * Adds a child to the list of children. Here's how the normalization works:
      * we normalize all other probabilities NOT including this current one. Then
@@ -90,6 +91,7 @@ class State {
     }
 
     /**
+     * Does a pretty-print of the graph. I like how it looks! (Note: thanks to Stack Overflow)
      * 
      * @param prefix
      * @param isTail

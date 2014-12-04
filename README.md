@@ -16,12 +16,11 @@ see <http://www.gnu.org/licenses/>.
 
 ---------------------------------------------------------------------------------------------------
 
-*TODO*
+*Some short-term goals*
 
-(1) with a new goal in mind, do some more research to see if anyone's done something like this.
-(2) study sequential likelihood ratio test and cumulative sum test
-(3) implement something!!!
-(4) continue with background reading
+(1) Continue to do research to see if anyone's done something like this.
+(2) Study the sequential likelihood ratio test and the cumulative sum test.
+(3) Decide on what experiments to run.
 
 ***The Plan***
 

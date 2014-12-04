@@ -1,6 +1,7 @@
 package hmm;
 
 import java.util.*;
+import utilities.*;
 
 /**
  * This will serve as the starting point of the whole software package. It calls the relevant code 
@@ -9,17 +10,29 @@ import java.util.*;
  * 
  * @author Daniel Seita
  */
-public class RunHMM {
+public class MainHarness {
     
+    /**
+     * Runs a test suite right now. Originally, I had two HMMs, and we'd go through the first (benign)
+     * one, then after it ended, we'd start at state 0 again in the adversary HMM and run through the
+     * adversary. But how do we implement a mixture of HMMs? What if each HMM stored its internal state
+     * and each time we called "generate next state," it would generate the next HMM state based on its
+     * internal state? That seems like a cleaner way of doing this. Now yes we will need to run tests
+     * while only using the observations so it's kind of clunky because we have to take probabilities
+     * of full observation sequences, but maybe that's an interesing question.
+     * 
+     * @param args
+     */
 	public static void main(String[] args) {
 
 	    // Some administrative/statistics set up
 	    int n = 5;
-	    int threshold = 50; // Indicates the splitting point
-	    int maxObservations = 150;
-	    HMM benign = new HMM(convertToLogProbs(createRandomTransitions(n)),
+	    double hThreshold = Double.POSITIVE_INFINITY; // Set this to be something if I want to limit things
+	    int threshold = 100; // Indicates the splitting point (UPDATE this time it will be for mixtures)
+	    int maxObservations = 500;
+	    HiddenMarkovModel benign = new HiddenMarkovModel(convertToLogProbs(createRandomTransitions(n)),
 	            convertToLogProbs(createRandomEmissions(n, false)));
-	    HMM adversary = new HMM(convertToLogProbs(createRandomTransitions(n)),
+	    HiddenMarkovModel adversary = new HiddenMarkovModel(convertToLogProbs(createRandomTransitions(n)),
 	            convertToLogProbs(createRandomEmissions(n, true)));
 	    System.out.println("Running this example with " + n + " states.");
 	    System.out.println("\nHere are the benign tranisitions and emissions:");
@@ -31,7 +44,6 @@ public class RunHMM {
 	    System.out.println();
 	    printMatrix(adversary.emissions);
 	    System.out.println("\n\nNow let's go through the HMM.");
-	    int currentState = 0;
 	    int value = -1;
 	    int numZeros = 0;
 	    int numOnes = 0;
@@ -48,17 +60,21 @@ public class RunHMM {
 	        }
 	        System.out.println("\nObservation Index = " + obsIndex);
 	        if (obsIndex < threshold) {
-	            currentState = benign.generateNextState(currentState);
-	            value = benign.generateObservation(currentState);
-	            System.out.println("State = " + currentState + ", observation = " + value);
+	            benign.generateNextState();
+	            value = benign.generateObservation();
+	            System.out.println("State = " + benign.getCurrentState() + ", observation = " + value);
 	        } else {
-	            if (obsIndex == threshold) {
-	                currentState = 0; // We'll just default to 0 the first time we are in adversary
+	            // Old way was that I just used the adversary state. New way, I think I should use a mix.
+	            Random rand = new Random();
+	            if (rand.nextDouble() < 0.5) {
+	                adversary.generateNextState();
+	                value = adversary.generateObservation();
+	                System.out.println("State = " + adversary.getCurrentState() + ", value = " + value);
 	            } else {
-	                currentState = adversary.generateNextState(currentState);
+	                benign.generateNextState();
+	                value = benign.generateObservation();
+	                System.out.println("State = " + benign.getCurrentState() + ", value = " + value);
 	            }
-	            value = adversary.generateObservation(currentState);
-	            System.out.println("State = " + currentState + ", value = " + value);
 	        }
 	        if (value == 0) numZeros++;
 	        if (value == 1) numOnes++;
@@ -75,8 +91,8 @@ public class RunHMM {
 	            cumulativeSum.add(Math.max(0.0, thisCumulativeSum));
 	        } else {
 	            double valueToAdd = Math.max(0.0, thisCumulativeSum + cumulativeSum.get(cumulativeSum.size()-1));
-	            if (valueToAdd > 100) {
-	                valueToAdd = 100;
+	            if (valueToAdd > hThreshold) {
+	                valueToAdd = hThreshold;
 	            }
 	            cumulativeSum.add(valueToAdd);
 	        }
@@ -94,8 +110,8 @@ public class RunHMM {
 	            clampedCumulativeSum.add(Math.max(0.0, thisCumulativeSum));
 	        } else {
 	            double valueToAdd = Math.max(0.0, thisCumulativeSum + clampedCumulativeSum.get(clampedCumulativeSum.size()-1));
-	            if (valueToAdd > 100) {
-	                valueToAdd = 100; // For readability
+	            if (valueToAdd > hThreshold) {
+	                valueToAdd = hThreshold; // For readability in graphs (so values don't get too large); can also serve as our h threshold.
 	            }
 	            clampedCumulativeSum.add(valueToAdd); 
 	        }
@@ -105,20 +121,6 @@ public class RunHMM {
 	        System.out.println("Clamped observations: " + clampedObservations);
 	        System.out.println(clampedCumulativeSum);
 	    }
-	}
-	
-	/**
-	 * Gets the "clamped" list from the full observations list and the cumulative sums list, so it only
-	 * includes the points after the last reset. For example, fullList could be [1,0,1,0,0,1] corresponding
-	 * to cumulativeSum = [4.5, 2.1, 0, 0, 3,5, 5.0], so the list to return would be [0,1], i.e., the last
-	 * two elements of the full list.
-	 * 
-	 * @param fullList
-	 * @param cumulativeSum
-	 * @return
-	 */
-	public static List<Integer> getClampedList(List<Integer> fullList, List<Double> cumulativeSum) {
-	    return null;
 	}
 	
 	public static void runTestSuite() {
@@ -209,10 +211,9 @@ public class RunHMM {
      */
     public static boolean checkIfArrayNormalizes(double[] a, boolean logSpace) {
         if (logSpace) {
-            Utilities utils = new Utilities();
             double sum = Double.NEGATIVE_INFINITY;
             for (int i = 0; i < a.length; i++) {
-                sum = utils.logAdd(sum, a[i]);
+                sum = DanielUtilities.logAdd(sum, a[i]);
             }
             return Math.abs(Math.exp(sum) - 1.0) < 0.000001;
         } else {
@@ -234,10 +235,9 @@ public class RunHMM {
     public static double[] normalizeExistingArray(double[] a, boolean logSpace) {
         double[] updatedArray = new double[a.length];
         if (logSpace) {
-            Utilities utils = new Utilities();
             double sum = Double.NEGATIVE_INFINITY;
             for (int i = 0; i < a.length; i++) {
-                sum = utils.logAdd(sum, a[i]);
+                sum = DanielUtilities.logAdd(sum, a[i]);
             }
             for (int i = 0; i < a.length; i++) {
                 updatedArray[i] = a[i] - sum;
@@ -286,260 +286,3 @@ public class RunHMM {
     }
  
 }
-
-
-/**
- * Class for HMMs I'll use. Keep in mind that calculations are to be done in log space, so be sure to convert
- * to normal-space if it makes things easier.
- * 
- * @author Daniel Seita
- */
-class HMM {
-    
-    public int numStates;
-    public double[][] transitions;
-    public double[][] emissions;
-    public Utilities utils;
-    
-    public HMM(double[][] transitions, double[][] emissions) {
-        this.numStates = transitions.length;
-        this.transitions = transitions;
-        this.emissions = emissions;
-        utils = new Utilities();
-    }
-       
-    /**
-     * Generates the next state according to the transition matrix. I'll exponentiate to make things easier.
-     * 
-     * @param state The "previous" state
-     * @return The next state, probabilistically chosen
-     */
-    public int generateNextState(int state) {
-        double value = (new Random()).nextDouble();
-        double sum = Math.exp(this.transitions[state][0]);
-        for (int i = 0; i < numStates-1; i++) {
-            if (value < sum) {
-                return i;
-            }
-            sum += Math.exp(this.transitions[state][i+1]);
-        }
-        return numStates-1;
-    }
-    
-    /**
-     * Probabilistically generates a binary-valued observation depending on the state we're in. This is
-     * easiest to implement when comparing with the exponentiated version of this.emissions[state][0].
-     * 
-     * @param state The current state of the HMM
-     * @return The observation generated from the state, probabilistically chosen
-     */
-    public int generateObservation(int state) {
-        if ((new Random()).nextDouble() < Math.exp(this.emissions[state][0])) {
-            return 0;
-        } else {
-            return 1;
-        }
-    }
-    
-    /**
-     * Given a list of observations generated (possibly NOT from this particular HMM), compute the forward
-     * probability, i.e., the probability of generating that observation given this HMM. Note: we use log
-     * probabilities, and also we only have the list of observations, so we need to sum over all possible
-     * current states we could be in for the last observation.
-     * 
-     * @param observations The list of observations.
-     * @return The log of the forward probability.
-     */
-    public double getForwardProbability(List<Integer> observations) {
-        double result = Double.NEGATIVE_INFINITY;
-        double[][] tempArray = new double[observations.size()][numStates];
-        for (int state = 0; state < numStates; state++) {
-            double logProb = this.transitions[0][state] + this.emissions[state][observations.get(0)];
-            assert !Double.isNaN(logProb) : "Problem: logProb = " + logProb;
-            result = utils.logAdd(result, logProb);
-            tempArray[0][state] = logProb;
-        }
-        assert Math.exp(result) >= 0.0 && Math.exp(result) <= 1.0 : "Problem: Math.exp(result) = " + Math.exp(result);
-        if (observations.size() == 1) return result;
-        for (int obs = 1; obs < observations.size(); obs++) {
-            for (int j = 0; j < numStates; j++) {
-                double logSum = Double.NEGATIVE_INFINITY;
-                for (int i = 0; i < numStates; i++) {
-                    double logComponent = tempArray[obs-1][i] + transitions[i][j] + emissions[j][observations.get(obs)];
-                    assert !Double.isNaN(logComponent) : "logComponent = " + logComponent;
-                    logSum = utils.logAdd(logSum, logComponent);
-                }
-                tempArray[obs][j] = logSum;
-            }
-        }
-        result = Double.NEGATIVE_INFINITY;
-        for (int state = 0; state < numStates; state++) {
-            result = utils.logAdd(result, tempArray[observations.size()-1][state]);
-        }
-        return result;
-    }
-}
-
-
-/**
- * Just some utilities that I'll eventually put in its own file
- * 
- * @author Daniel Seita
- */
-class Utilities {
-    
-    public Utilities() {
-        // TODO put something here
-    }
-    
-    /**
-     * Given log(x) and log(y), returns log(x+y). This method is from Dan Klein in the SloppyMath
-     * class from the Berkeley NLP Parser. This formula is pretty commonplace, though.
-     * 
-     * @param logX This is log(x) for some x.
-     * @param logY This is log(y) for some y.
-     * @return The value log(x+y).
-     */
-	public double logAdd(double logX, double logY) {
-		if (logY > logX) {
-			double temp = logX;
-			logX = logY;
-			logY = temp;
-		}
-		if (logX == Double.NEGATIVE_INFINITY) { return logX; }
-		double negDiff = logY - logX;
-		if (negDiff < -20) { return logX; }
-		return logX + java.lang.Math.log(1.0 + java.lang.Math.exp(negDiff));
-	}
-}
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    ///////////////////// 
-    // OLD STUFF BELOW //
-    ///////////////////// 
-
-	    /*
-	    // The old main method, let me save this until I really need it
-	    System.out.println("*** Now starting up the HMM code ***");
-	    boolean simpleTestCase = false;
-		Map<String, String> argMap = CommandLineUtils.simpleCommandLineParser(args);
-		if (argMap.containsKey("-simple")) {
-		    simpleTestCase = true;
-		}
-		ResearchHiddenMarkovModel researchHMM = new ResearchHiddenMarkovModel();
-		BenignHiddenMarkovModel benignHMM = new BenignHiddenMarkovModel(100);
-		List<State> benignStates = generateHiddenStateSequence(benignHMM);
-		List<State> researchStates = generateHiddenStateSequence(researchHMM);
-		List<State> mixedStateSequence = mixUpStates(benignStates, researchStates);
-		generateObservations(mixedStateSequence);
-		*/
-	
-	/**
-	 * This will go through the states and generate the observation sequence. Ideally, we go through
-	 * each state and run our statistical tests on it to determine likelihoods. I'm still kind of fuzzy
-	 * on how this will work.
-	 * 
-	 * @param stateList
-	 */
-	//private static void generateObservations(List<State> stateList) {
-	    // TODO Implement
-	//}
-	
-	/**
-	 * Given state sequences from different HMMs, we need to determine how to mix them together to
-	 * form one sequence. This will be more of a black art, and needs some randomnes. Ideally, the
-	 * benign state sequence is much longer than the other, so we can run it for a while and then
-	 * "flip on" the research states so that we can do a, say, 75-25 split? Then after the research
-	 * states are done, we should still have some more benign states to run.
-	 * 
-	 * @param benignStates
-	 * @param researchStates
-	 * @return
-	 */
-    /*
-	private static List<State> mixUpStates(List<State> benignStates, List<State> researchStates) {
-	    List<State> result = new ArrayList<State>();
-	    // TODO Implement
-	    return result;
-	}*/
-	
-	/**
-	 * For now, we'll have this return a list of the hidden states. Then we'll put the functionality
-	 * to generate observations in a different method.
-	 * 
-	 * @param thisHMM A Hidden Markov Model that we can run through.
-	 * @return 
-	 */
-	/*
-	private static List<State> generateHiddenStateSequence(HiddenMarkovModel thisHMM) {
-	    List<State> stateList = new ArrayList<State>();
-	    Random rand = new Random();
-	    State state = thisHMM.getRoot();
-	    int obsIndex = 0;
-	    stateList.add(state);
-	    while (!state.isEndState()) {
-	        obsIndex++;
-	        double val = rand.nextDouble();
-	        //System.out.println("\nState number " + obsIndex);
-	        //System.out.println("Current state: " + state.toString());
-	        //System.out.println("Value drawn was " + val);
-	        state = determineNextState(state, val);
-	        stateList.add(state);
-	    }
-	    return stateList;
-	}
-	*/
-
-	/**
-	 * Given a state and a value, draw the next state, which is either itself or from the 
-	 * state's children.
-	 * 
-	 * @param state
-	 * @param val
-	 * @return
-	 */
-	/*
-	private static State determineNextState(State state, double val) {
-	    State nextState = null;
-	    boolean newState = false;
-	    if (val <= state.getSelfLoopProb()) {
-	        nextState = state;
-	        newState = true;
-	    } else {
-	        double[] probThresh = new double[state.numChildren() + 1];
-	        probThresh[0] = state.getSelfLoopProb();
-	        for (int child = 1; child <= state.numChildren(); child++) {
-	            probThresh[child] = probThresh[child-1] + state.getProbabilities().get(child-1);
-	        }
-	        if (Math.abs(probThresh[probThresh.length-1] - 1.0) > 0.000001) {
-	            System.out.println("ERROR: probThresh[n] is not close to one: " + probThresh[probThresh.length-1]);
-	            System.exit(0);
-	        }
-	        for (int i = 1; i < probThresh.length; i++) {
-	            if (newState) continue;
-	            if (val <= probThresh[i]) {
-	                nextState = state.getChildren().get(i-1); // Little confusing
-	                newState = true;
-	            }
-	        }
-	    }
-	    return nextState;
-	}
-	*/
