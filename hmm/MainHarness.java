@@ -4,7 +4,7 @@ import java.util.*;
 import utilities.*;
 
 /**
- * This will serve as the starting point of the whole software package. It calls the relevant code 
+ * This will serve as the starting point of the whole software package. It calls the relevant code to
  * generate a list of observations, which are then analyzed with our HMM machinery so as to determine
  * when anomalous events start to occur (w/high probability). Start with some simplifying assumptions.
  * 

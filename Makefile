@@ -3,10 +3,10 @@
 JFLAGS = -g
 JC = javac
 
-default: RunHMM.class
+default: MainHarness.class
 
-RunHMM.class: hmm/RunHMM.java
-	$(JC) $(JFLAGS) hmm/RunHMM.java
+MainHarness.class: hmm/MainHarness.java
+	$(JC) $(JFLAGS) hmm/MainHarness.java
 
 clean:
 	$(RM) *.class

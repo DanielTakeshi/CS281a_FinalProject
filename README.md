@@ -1,6 +1,7 @@
 ---------------------------------------------------------------------------------------------------
 
 HMM-Detector is a program that can detect changes in HMM distributions.
+
 Copyright (C) 2014 Daniel Seita
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU
