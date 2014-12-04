@@ -16,7 +16,7 @@ public class RunHMM {
 	    // Some administrative/statistics set up
 	    int n = 5;
 	    int threshold = 50; // Indicates the splitting point
-	    int maxObservations = 100;
+	    int maxObservations = 150;
 	    HMM benign = new HMM(convertToLogProbs(createRandomTransitions(n)),
 	            convertToLogProbs(createRandomEmissions(n, false)));
 	    HMM adversary = new HMM(convertToLogProbs(createRandomTransitions(n)),
@@ -35,10 +35,17 @@ public class RunHMM {
 	    int value = -1;
 	    int numZeros = 0;
 	    int numOnes = 0;
+	    List<Double> cumulativeSum = new ArrayList<Double>();
+	    List<Double> clampedCumulativeSum = new ArrayList<Double>();
+	    List<Integer> clampedObservations = new ArrayList<Integer>();
+	    int firstIndexToUse = 0;
 	    
 	    // Now go through the HMM
 	    List<Integer> observationList = new ArrayList<Integer>();
 	    for (int obsIndex = 0; obsIndex < maxObservations; obsIndex++) {
+	        if (obsIndex == firstIndexToUse) {
+	            clampedObservations = new ArrayList<Integer>();
+	        }
 	        System.out.println("\nObservation Index = " + obsIndex);
 	        if (obsIndex < threshold) {
 	            currentState = benign.generateNextState(currentState);
@@ -55,12 +62,67 @@ public class RunHMM {
 	        }
 	        if (value == 0) numZeros++;
 	        if (value == 1) numOnes++;
+
+	        // The above info shouldn't change based on whether we're using clamped vs full lists. First do full:
 	        observationList.add(value);
 	        System.out.println("Current (0s, 1s) tally = (" + numZeros + ", " + numOnes + ").");
-	        System.out.println("Benign forward log prob: " + benign.getForwardProbability(observationList));
-	        System.out.println("Adversary forward log prob: " + adversary.getForwardProbability(observationList));
+	        double benignForwardLogProb = benign.getForwardProbability(observationList);
+	        double adversaryForwardLogProb = adversary.getForwardProbability(observationList);
+	        System.out.println("Benign forward log prob: " + benignForwardLogProb);
+	        System.out.println("Adversary forward log prob: " + adversaryForwardLogProb);
+	        double thisCumulativeSum = adversaryForwardLogProb - benignForwardLogProb;
+	        if (cumulativeSum.size() == 0) {
+	            cumulativeSum.add(Math.max(0.0, thisCumulativeSum));
+	        } else {
+	            double valueToAdd = Math.max(0.0, thisCumulativeSum + cumulativeSum.get(cumulativeSum.size()-1));
+	            if (valueToAdd > 100) {
+	                valueToAdd = 100;
+	            }
+	            cumulativeSum.add(valueToAdd);
+	        }
+	        System.out.println("Cumulative observations: " + observationList);
+	        System.out.println(cumulativeSum);
+
+	        // Now do clamped version
+	        clampedObservations.add(value);
+	        benignForwardLogProb = benign.getForwardProbability(clampedObservations);
+	        adversaryForwardLogProb = adversary.getForwardProbability(clampedObservations);
+	        System.out.println("Benign CLAMPED forward log prob: " + benignForwardLogProb);
+	        System.out.println("Adversary CLAMPED forward log prob: " + adversaryForwardLogProb);
+	        thisCumulativeSum = adversaryForwardLogProb - benignForwardLogProb;
+	        if (clampedCumulativeSum.size() == 0) {
+	            clampedCumulativeSum.add(Math.max(0.0, thisCumulativeSum));
+	        } else {
+	            double valueToAdd = Math.max(0.0, thisCumulativeSum + clampedCumulativeSum.get(clampedCumulativeSum.size()-1));
+	            if (valueToAdd > 100) {
+	                valueToAdd = 100; // For readability
+	            }
+	            clampedCumulativeSum.add(valueToAdd); 
+	        }
+	        if (clampedCumulativeSum.get(clampedCumulativeSum.size()-1) == 0.0) {
+	            firstIndexToUse = obsIndex+1;
+	        }
+	        System.out.println("Clamped observations: " + clampedObservations);
+	        System.out.println(clampedCumulativeSum);
 	    }
-	    System.out.println("\nDONE");
+	}
+	
+	/**
+	 * Gets the "clamped" list from the full observations list and the cumulative sums list, so it only
+	 * includes the points after the last reset. For example, fullList could be [1,0,1,0,0,1] corresponding
+	 * to cumulativeSum = [4.5, 2.1, 0, 0, 3,5, 5.0], so the list to return would be [0,1], i.e., the last
+	 * two elements of the full list.
+	 * 
+	 * @param fullList
+	 * @param cumulativeSum
+	 * @return
+	 */
+	public static List<Integer> getClampedList(List<Integer> fullList, List<Double> cumulativeSum) {
+	    return null;
+	}
+	
+	public static void runTestSuite() {
+	    // TODO Use this method to run a test suite
 	}
 	
 	/**
