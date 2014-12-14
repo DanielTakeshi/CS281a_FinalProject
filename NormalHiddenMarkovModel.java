@@ -12,8 +12,8 @@ class NormalHiddenMarkovModel {
     
     private int numStates;
     private int internalState;
-    private double[][] transitions;
-    private NormalDistribution[] stateEmissions;
+    private double[][] transitions;                 // In log-space
+    private NormalDistribution[] stateEmissions;    // NOT in log-space
     
     /** 
      * To initialize an HMM, call NornalHiddenMarkovModel(n, distr) where n is the number of states
@@ -35,6 +35,11 @@ class NormalHiddenMarkovModel {
     public int getCurrentState() {
         return this.internalState;
     }
+    
+    /** Resets the state back to zero, e.g., if we're in a loop and re-using this HMM */
+    public void resetState() {
+        this.internalState = 0;
+    }
        
     /** Generates the next state according to the transition matrix (and exponentiates). */
     public int generateNextState() {
@@ -55,13 +60,13 @@ class NormalHiddenMarkovModel {
     public double generateObservation() {
         return this.stateEmissions[internalState].sample();
     }
-
     
     /**
 	 * Given the number of states, creates a transition matrix 'transitions' where transitions[k] is the
 	 * vector of transition probabilities of the form a_{kx} where x is the index inside transitions[k],
 	 * so k is the prior state and x is the current one. Right now it initializes values to be uniformly
 	 * distributed between 0 and 1, and then normalizes by row. The transitions create an ergodic HMM.
+	 * ALSO it then takes logs, so everything that uses it should be in log-space (or be aware of that).
 	 * 
 	 * @param numStates The number of states in the HMM, i.e., transitions.length and transitions[k].length.
 	 * @return A random transition matrix, which could be used as the "A" matrix for an HMM.
@@ -77,9 +82,7 @@ class NormalHiddenMarkovModel {
 	            sum += nonNormalizedValues[i];
 	        }
 	        for (int i = 0; i < numStates; i++) {
-	            transitions[row][i] = nonNormalizedValues[i] / sum;
-	            assert transitions[row][i] >= 0.0 && transitions[row][i] <= 1.0 : "Problem:"
-	                    + " transitions[row][i] = " + transitions[row][i];
+	            transitions[row][i] = Math.log(nonNormalizedValues[i] / sum);
 	        }
 	    }
 	    return transitions;
@@ -91,20 +94,22 @@ class NormalHiddenMarkovModel {
      * probabilities, and also we only have the list of observations, so we need to sum over all possible
      * current states we could be in for the last observation.
      * 
+     * Note: the emission probabilities are NOT assumed to be in log-space so take logs for those.
+     * 
      * @param observations The list of observations, which are individually doubles.
      * @return The log of the forward probability.
      */
-    public double getForwardProbability(List<Double> observations) {
+    public double getLogForwardProbability(List<Double> observations) {
         double result = Double.NEGATIVE_INFINITY;
-        double[][] tempArray = new double[observations.size()][numStates];
+        double[][] tempArray = new double[observations.size()][numStates]; // Holds cumulative (log) probabilities
         for (int state = 0; state < numStates; state++) {
             //double logProb = this.transitions[0][state] + this.emissions[state][observations.get(0)];
-            double logProb = this.transitions[0][state] + this.stateEmissions[state].density(observations.get(0));
+            double logProb = this.transitions[0][state] + Math.log(this.stateEmissions[state].density(observations.get(0)));
             assert !Double.isNaN(logProb) : "Problem: logProb = " + logProb;
             result = logAdd(result, logProb);
             tempArray[0][state] = logProb;
         }
-        assert Math.exp(result) >= 0.0 && Math.exp(result) <= 1.0 : "Problem: Math.exp(result) = " + Math.exp(result);
+        //assert Math.exp(result) >= 0.0 && Math.exp(result) <= 1.0 : "Problem: Math.exp(result) = " + Math.exp(result);
         if (observations.size() == 1) return result;
         for (int obs = 1; obs < observations.size(); obs++) {
             for (int j = 0; j < numStates; j++) {
@@ -112,7 +117,7 @@ class NormalHiddenMarkovModel {
                 for (int i = 0; i < numStates; i++) {
                     //double logComponent = tempArray[obs-1][i] + transitions[i][j] + emissions[j][observations.get(obs)];
                     double logComponent = tempArray[obs-1][i] + transitions[i][j] + 
-                            this.stateEmissions[j].density(observations.get(obs));
+                            Math.log(this.stateEmissions[j].density(observations.get(obs)));
                     assert !Double.isNaN(logComponent) : "logComponent = " + logComponent;
                     logSum = logAdd(logSum, logComponent);
                 }
