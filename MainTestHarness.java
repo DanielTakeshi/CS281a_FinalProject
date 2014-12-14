@@ -19,23 +19,39 @@ public class MainTestHarness {
      * @param args Nothing for now
      */
     public static void main(String[] args) {
-        System.out.println("Now testing with a one-state, Gaussian source.");
+        //System.out.println("Now testing with a one-state, Gaussian source.");
+        //conductSingleGaussianSourceTests();
+        System.out.println("Done w/one-state Gaussian source. Now doing the HMM Gaussian source.");
+        conductHMMGaussianSourceTests();
+        System.out.println("Done.");
+    }
+    
+    /** Conducts the HMM Gaussian source tests. Comment out if desired. */
+    public static void conductHMMGaussianSourceTests() {
+        int numSensors = 10;
+        //NormalHiddenMarkovModel n1 = new NormalHiddenMarkovModel(numStates, stateEmissions);
+    }
+    
+    /** Conducts the single-source, Gaussian tests. Comment out if desired. */
+    public static void conductSingleGaussianSourceTests() {
         int numSensors = 10;
         NormalDistribution n1 = new NormalDistribution(0.0, 1.0);
         NormalDistribution n2 = new NormalDistribution(0.0, 1.032);
-        System.out.println("\nNow doing a single Page's test ...");
+        System.out.println("\n\nNow doing a single Page's test ...");
         testSinglePageOneStateGaussian(n1, n2);
-        System.out.println("\nNow doing Page's test in parallel ...");
+        System.out.println("\n\nNow doing Page's test in parallel ...");
         testParallelPageOneStateGaussian(n1, n2, numSensors);
-        System.out.println("\nNow doing the centralized entity Test ...");
+        System.out.println("\n\nNow doing the centralized entity Test ...");
         testIdealCenterOneStateGaussian(n1, n2, numSensors);
-        System.out.println("\nNow doing running consensus ...");
-        testRunningConsensusOneStateGaussian(n1, n2, numSensors);
-        System.out.println("Done.");
+        System.out.println("\n\nNow doing running consensus ...");
+        testRunningConsensusOneStateGaussian(n1, n2, numSensors);       
     }
 
     /**
-     * This will be perhaps the most interesting part of this code: the Running Consensus scheme.
+     * This will be perhaps the most interesting part of this code: the Running Consensus scheme. One
+     * thing that is not clear from the paper is how they probabilistically set up the v = 5 exchanges.
+     * The way I will do it is that I'll just pick five random exchanges and take the average. Note: 
+     * some of these may be repeated, e.g., I might choose (1,2) and later get (1,2) again.
      * 
      * @param n1
      * @param n2
@@ -44,7 +60,84 @@ public class MainTestHarness {
     public static void testRunningConsensusOneStateGaussian(NormalDistribution n1, NormalDistribution n2, int M) {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();
+        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+            int totalFalseAlarms = 0;
+            int totalSamplesFalse = 0;
+            int totalSamples = 0;
+            double averageDetectionDelay = -1.0;
+            System.out.println("Currently using threshold gamma = " + threshold);
+            for (int trial = 1; trial <= 10000; trial++) {
+                boolean pageTestDone = false;
+                int threshForChange = 500;
+                int iteration = 0;
+                double[] previousScores = new double[M];
 
+                // When performing Running Consensus, we will fix the decision to be made at the first sensor
+                while (!pageTestDone) {
+                    double[] observations = new double[M];
+                    if (iteration < threshForChange) {
+                        totalSamplesFalse++;
+                        for (int i = 0; i < M; i++) {
+                            observations[i] = n1.sample();
+                        }
+                    } else {
+                        for (int i = 0; i < M; i++) {
+                            observations[i] = n2.sample();
+                        }
+                    }
+                    
+                    // Set up the equation [S_n] = W_n*[S_{n-1}] + M*W_n*[l(x)], so first set up the last double[].
+                    double[] logLikelihoods = new double[M];
+                    for (int i = 0; i < M; i++) { // Include M factor because that's what they did in the paper
+                        logLikelihoods[i] = M * Math.log(n2.density(observations[i]) / n1.density(observations[i]));
+                    }
+
+                    // Now pick the 5 pairs we need to exchange
+                    for (int pair = 0; pair < 5; pair++) {
+                        int firstIndex = randInt(0, M-1);
+                        int secondIndex = randInt(0, M-1);
+                        while (secondIndex == firstIndex) {
+                            secondIndex = randInt(0, M-1);
+                        }
+                        double firstAverage = (previousScores[firstIndex] + previousScores[secondIndex]) / 2.0;
+                        previousScores[firstIndex] = firstAverage;
+                        previousScores[secondIndex] = firstAverage;
+                        double secondAverage = (logLikelihoods[firstIndex] + logLikelihoods[secondIndex]) / 2.0;
+                        logLikelihoods[firstIndex] = secondAverage;
+                        logLikelihoods[secondIndex] = secondAverage;
+                    }
+                    
+                    // We're done with the pairwise stuff so now it's a matter of adding two things together.
+                    double[] currentScores = new double[M];
+                    for (int i = 0; i < M; i++) {
+                        currentScores[i] = Math.max(0.0, previousScores[i] + logLikelihoods[i]);
+                    }
+                    for (int i = 0; i < M; i++) {
+                        previousScores[i] = currentScores[i];
+                    }
+                    if (currentScores[0] > threshold) {
+                        if (iteration < threshForChange) {
+                            totalFalseAlarms++;
+                        } else if (iteration >= threshForChange) {
+                            pageTestDone = true;
+                            int thisDetectionDelay = iteration - 500;
+                            averageDetectionDelay = ((trial-1)*averageDetectionDelay + thisDetectionDelay) / ((double) trial);                           
+                        }
+                    }
+                    totalSamples++;
+                    iteration++;
+                }
+
+            }
+            System.out.println("False alarms = " + totalFalseAlarms);
+            System.out.println("Total samples (before thresh) = " + totalSamplesFalse);
+            System.out.println("Total samples = " + totalSamples);
+            double ratio = ((double) totalFalseAlarms) / totalSamplesFalse;
+            System.out.println("Ratio = " + ratio);
+            System.out.println("Average detection delay = " + averageDetectionDelay);
+            falseAlarmRates.add(ratio);
+            detectionDelays.add(averageDetectionDelay);              
+        }
         System.out.println("To conclude: false alarm rates and detection delays:");
         System.out.println(falseAlarmRates);
         System.out.println(detectionDelays);
@@ -61,7 +154,7 @@ public class MainTestHarness {
     public static void testIdealCenterOneStateGaussian(NormalDistribution n1, NormalDistribution n2, int M) {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();
-        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.25) {
+        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
@@ -128,7 +221,7 @@ public class MainTestHarness {
     public static void testParallelPageOneStateGaussian(NormalDistribution n1, NormalDistribution n2, int M) {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();
-        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.25) {
+        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
@@ -203,7 +296,7 @@ public class MainTestHarness {
     public static void testSinglePageOneStateGaussian(NormalDistribution n1, NormalDistribution n2) {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();
-        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.25) {
+        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
             int totalFalseAlarms = 0;   // Total times Page's test exceeds thresh when it's benign
             int totalSamplesFalse = 0;  // Total samples drawn before malignant distribution begins
             int totalSamples = 0;       // Total samples drawn overall across all trials here
@@ -253,7 +346,9 @@ public class MainTestHarness {
         System.out.println(detectionDelays);
     }
    
-    // Some various utilities
+    //////////////////////////////
+    // Various Helper Functions //
+    //////////////////////////////
 
     /** A trivial helper function that takes the maximum element of an array.*/
     private static double maxArrayValue(double[] a) {
@@ -267,8 +362,8 @@ public class MainTestHarness {
     }
     
     /**
-     * Returns a pseudo-random number between min and max, inclusive. The difference between 
-     * min and max can be at most <code>Integer.MAX_VALUE - 1</code>.
+     * Returns a pseudo-random number between min and max, inclusive. The difference between min and
+     * max can be at most <code>Integer.MAX_VALUE - 1</code>.
      *
      * @param min Minimum value
      * @param max Maximum value. Must be greater than min.

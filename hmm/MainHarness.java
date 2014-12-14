@@ -161,7 +161,7 @@ public class MainHarness {
 	 * Given the number of states, creates the emissions array "emissions" for a given HMM. Here, we'll
 	 * assume we have outputs 0 and 1, and that emissions[0] = [Pr(0 | S0), Pr(1 | S0)], so we're going
 	 * to condition emissions[k] on the STATE number. Values are initialized randomly. TODO I'm going to
-	 * add a special change to if we have adversary vs nonadversary to make things a little more interesting.
+	 * add a special change to if we have adversary vs nonadversary to make things more interesting.
 	 * Adversary will have a higher chance of generating ones.
 	 * 
 	 * @param numStates The number of states in the HMM.

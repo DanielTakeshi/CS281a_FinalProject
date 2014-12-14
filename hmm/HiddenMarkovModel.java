@@ -4,8 +4,9 @@ import java.util.*;
 import utilities.*;
 
 /**
- * Class for HMMs I'll use. Keep in mind that calculations are to be done in log space, so be sure to convert
- * to normal-space if it makes things easier.
+ * Class for HMMs I'll use. Keep in mind that calculations are to be done in log space, so be sure
+ * to convert to normal-space if it makes things easier. EDIT: this class assumes that the emissions
+ * are Bernoulli. To make things Gaussian, use a different class.
  * 
  * @author Daniel Seita
  */
@@ -31,7 +32,7 @@ class HiddenMarkovModel {
     }
        
     /**
-     * Generates the next state according to the transition matrix. I'll exponentiate to make things easier.
+     * Generates the next state according to the transition matrix (and exponentiates).
      * 
      * @return The next state, probabilistically chosen
      */
