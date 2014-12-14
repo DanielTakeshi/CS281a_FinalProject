@@ -25,6 +25,7 @@ public class MainHarness {
      */
 	public static void main(String[] args) {
 
+	    /*
 	    // Some administrative/statistics set up
 	    int n = 5;
 	    double hThreshold = Double.POSITIVE_INFINITY; // Set this to be something if I want to limit things
@@ -121,6 +122,7 @@ public class MainHarness {
 	        System.out.println("Clamped observations: " + clampedObservations);
 	        System.out.println(clampedCumulativeSum);
 	    }
+	    */
 	}
 	
 	public static void runTestSuite() {
@@ -213,7 +215,7 @@ public class MainHarness {
         if (logSpace) {
             double sum = Double.NEGATIVE_INFINITY;
             for (int i = 0; i < a.length; i++) {
-                sum = DanielUtilities.logAdd(sum, a[i]);
+                //sum = DanielUtilities.logAdd(sum, a[i]);
             }
             return Math.abs(Math.exp(sum) - 1.0) < 0.000001;
         } else {
@@ -237,7 +239,7 @@ public class MainHarness {
         if (logSpace) {
             double sum = Double.NEGATIVE_INFINITY;
             for (int i = 0; i < a.length; i++) {
-                sum = DanielUtilities.logAdd(sum, a[i]);
+                //sum = DanielUtilities.logAdd(sum, a[i]);
             }
             for (int i = 0; i < a.length; i++) {
                 updatedArray[i] = a[i] - sum;
