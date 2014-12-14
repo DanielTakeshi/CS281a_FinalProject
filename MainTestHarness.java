@@ -29,7 +29,25 @@ public class MainTestHarness {
     /** Conducts the HMM Gaussian source tests. Comment out if desired. */
     public static void conductHMMGaussianSourceTests() {
         int numSensors = 10;
-        //NormalHiddenMarkovModel n1 = new NormalHiddenMarkovModel(numStates, stateEmissions);
+        int numHMMStates = 10;
+        NormalDistribution benignStdDev = new NormalDistribution(0, 1.0);       // Use sigma = 1.0
+        NormalDistribution[] benignNormals = new NormalDistribution[numHMMStates];
+        NormalDistribution malignantStdDev = new NormalDistribution(0, 2.0);    // Use sigma = 2.0
+        NormalDistribution[] malignantNormals = new NormalDistribution[numHMMStates];
+        for (int i = 0; i < numHMMStates; i++) {
+            benignNormals[i] = new NormalDistribution(0, benignStdDev.sample());
+            malignantNormals[i] = new NormalDistribution(0, malignantStdDev.sample());
+        }
+        NormalHiddenMarkovModel hmm1 = new NormalHiddenMarkovModel(numHMMStates, benignNormals);
+        NormalHiddenMarkovModel hmm2 = new NormalHiddenMarkovModel(numHMMStates, malignantNormals);
+        System.out.println("\n\nNow doing a single Page's test ...");
+        testSinglePageHMMGaussian(hmm1, hmm2, numSensors);
+        System.out.println("\n\nNow doing Page's test in parallel ...");
+        testParallelPageHMMGaussian(hmm1, hmm2, numSensors);
+        System.out.println("\n\nNow doing the centralized entity Test ...");
+        testIdealCenterHMMGaussian(hmm1, hmm2, numSensors);
+        System.out.println("\n\nNow doing running consensus ...");
+        testRunningConsensusHMMGaussian(hmm1, hmm2, numSensors);
     }
     
     /** Conducts the single-source, Gaussian tests. Comment out if desired. */
@@ -45,6 +63,110 @@ public class MainTestHarness {
         testIdealCenterOneStateGaussian(n1, n2, numSensors);
         System.out.println("\n\nNow doing running consensus ...");
         testRunningConsensusOneStateGaussian(n1, n2, numSensors);       
+    }
+    
+    /**
+     * Running consensus for the HMM Gaussian case
+     * 
+     * @param hmm1 The benign HMM
+     * @param hmm2 The malignant HMM
+     * @param M The number of sensors
+     */
+    public static void testRunningConsensusHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M) {
+        List<Double> falseAlarmRates = new ArrayList<Double>();
+        List<Double> detectionDelays = new ArrayList<Double>();
+        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+            int totalFalseAlarms = 0;
+            int totalSamplesFalse = 0;
+            int totalSamples = 0;
+            double averageDetectionDelay = -1.0;
+            System.out.println("Currently using threshold gamma = " + threshold);
+            for (int trial = 1; trial <= 10000; trial++) {
+                // TODO
+            }
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
+            detectionDelays.add(averageDetectionDelay);
+        }
+        printFinalStatistics(falseAlarmRates, detectionDelays);
+    }
+
+    /**
+     * The ideal center for the HMM Gaussian case
+     * 
+     * @param hmm1
+     * @param hmm2
+     * @param M
+     */
+    public static void testIdealCenterHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M) {
+        List<Double> falseAlarmRates = new ArrayList<Double>();
+        List<Double> detectionDelays = new ArrayList<Double>();       
+        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+            int totalFalseAlarms = 0;
+            int totalSamplesFalse = 0;
+            int totalSamples = 0;
+            double averageDetectionDelay = -1.0;
+            System.out.println("Currently using threshold gamma = " + threshold);
+            for (int trial = 1; trial <= 10000; trial++) {
+                // TODO
+            }
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
+            detectionDelays.add(averageDetectionDelay);
+        }
+        printFinalStatistics(falseAlarmRates, detectionDelays);
+    }
+
+    /**
+     * The parallel bank for the HMM Gaussian case
+     * 
+     * @param hmm1
+     * @param hmm2
+     * @param M
+     */
+    public static void testParallelPageHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M) {
+        List<Double> falseAlarmRates = new ArrayList<Double>();
+        List<Double> detectionDelays = new ArrayList<Double>();       
+        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+            int totalFalseAlarms = 0;
+            int totalSamplesFalse = 0;
+            int totalSamples = 0;
+            double averageDetectionDelay = -1.0;
+            System.out.println("Currently using threshold gamma = " + threshold);
+            for (int trial = 1; trial <= 10000; trial++) {
+                // TODO
+            }
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
+            detectionDelays.add(averageDetectionDelay);
+        }
+        printFinalStatistics(falseAlarmRates, detectionDelays);
+    }
+
+    /**
+     * The single sensor for the HMM Gaussian case
+     * 
+     * @param hmm1
+     * @param hmm2
+     * @param M
+     */
+    public static void testSinglePageHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M)  {
+        List<Double> falseAlarmRates = new ArrayList<Double>();
+        List<Double> detectionDelays = new ArrayList<Double>();       
+        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+            int totalFalseAlarms = 0;
+            int totalSamplesFalse = 0;
+            int totalSamples = 0;
+            double averageDetectionDelay = -1.0;
+            System.out.println("Currently using threshold gamma = " + threshold);
+            for (int trial = 1; trial <= 10000; trial++) {
+                // TODO
+            }
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
+            detectionDelays.add(averageDetectionDelay);
+        }
+        printFinalStatistics(falseAlarmRates, detectionDelays);
     }
 
     /**
@@ -127,20 +249,12 @@ public class MainTestHarness {
                     totalSamples++;
                     iteration++;
                 }
-
             }
-            System.out.println("False alarms = " + totalFalseAlarms);
-            System.out.println("Total samples (before thresh) = " + totalSamplesFalse);
-            System.out.println("Total samples = " + totalSamples);
-            double ratio = ((double) totalFalseAlarms) / totalSamplesFalse;
-            System.out.println("Ratio = " + ratio);
-            System.out.println("Average detection delay = " + averageDetectionDelay);
-            falseAlarmRates.add(ratio);
-            detectionDelays.add(averageDetectionDelay);              
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
+            detectionDelays.add(averageDetectionDelay);
         }
-        System.out.println("To conclude: false alarm rates and detection delays:");
-        System.out.println(falseAlarmRates);
-        System.out.println(detectionDelays);
+        printFinalStatistics(falseAlarmRates, detectionDelays);
     }    
 
     /**
@@ -196,18 +310,11 @@ public class MainTestHarness {
                     iteration++;
                 }
             }
-            System.out.println("False alarms = " + totalFalseAlarms);
-            System.out.println("Total samples (before thresh) = " + totalSamplesFalse);
-            System.out.println("Total samples = " + totalSamples);
-            double ratio = ((double) totalFalseAlarms) / totalSamplesFalse;
-            System.out.println("Ratio = " + ratio);
-            System.out.println("Average detection delay = " + averageDetectionDelay);
-            falseAlarmRates.add(ratio);
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
             detectionDelays.add(averageDetectionDelay);
         }       
-        System.out.println("To conclude: false alarm rates and detection delays:");
-        System.out.println(falseAlarmRates);
-        System.out.println(detectionDelays);
+        printFinalStatistics(falseAlarmRates, detectionDelays);
     }
     
     /**
@@ -268,18 +375,11 @@ public class MainTestHarness {
                     iteration++;
                 }
             }
-            System.out.println("False alarms = " + totalFalseAlarms);
-            System.out.println("Total samples (before thresh) = " + totalSamplesFalse);
-            System.out.println("Total samples = " + totalSamples);
-            double ratio = ((double) totalFalseAlarms) / totalSamplesFalse;
-            System.out.println("Ratio = " + ratio);
-            System.out.println("Average detection delay = " + averageDetectionDelay);
-            falseAlarmRates.add(ratio);
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
             detectionDelays.add(averageDetectionDelay);
         }
-        System.out.println("To conclude: false alarm rates and detection delays:");
-        System.out.println(falseAlarmRates);
-        System.out.println(detectionDelays);
+        printFinalStatistics(falseAlarmRates, detectionDelays);
     }
     
     /**
@@ -332,24 +432,35 @@ public class MainTestHarness {
                     iteration++;
                 }
             }
-            System.out.println("False alarms = " + totalFalseAlarms);
-            System.out.println("Total samples (before thresh) = " + totalSamplesFalse);
-            System.out.println("Total samples = " + totalSamples);
-            double ratio = ((double) totalFalseAlarms) / totalSamplesFalse;
-            System.out.println("Ratio = " + ratio);
-            System.out.println("Average detection delay = " + averageDetectionDelay);
-            falseAlarmRates.add(ratio);
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
             detectionDelays.add(averageDetectionDelay);
         }
-        System.out.println("To conclude: false alarm rates and detection delays:");
-        System.out.println(falseAlarmRates);
-        System.out.println(detectionDelays);
+        printFinalStatistics(falseAlarmRates, detectionDelays);
     }
    
     //////////////////////////////
     // Various Helper Functions //
     //////////////////////////////
+    
+    /** Prints some statistics after a single threshold's iteration has concluded. Saves some code space. */
+    private static void printStatisticsAfterThresh(int totalFalseAlarms, int totalSamplesFalse, int totalSamples,
+            double averageDetectionDelay) {
+        System.out.println("False alarms = " + totalFalseAlarms);
+        System.out.println("Total samples (before thresh) = " + totalSamplesFalse);
+        System.out.println("Total samples = " + totalSamples);
+        double ratio = ((double) totalFalseAlarms) / totalSamplesFalse;
+        System.out.println("Ratio = " + ratio);
+        System.out.println("Average detection delay = " + averageDetectionDelay);       
+    }
 
+    /** Prints the false alarm & detection delay lists after going through all iterations for a test case */
+    private static void printFinalStatistics(List<Double> falseAlarmRates, List<Double> detectionDelays) {
+        System.out.println("To conclude: false alarm rates and detection delays:");
+        System.out.println(falseAlarmRates);
+        System.out.println(detectionDelays);       
+    }
+    
     /** A trivial helper function that takes the maximum element of an array.*/
     private static double maxArrayValue(double[] a) {
         double maxValue = Double.NEGATIVE_INFINITY;
