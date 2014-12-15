@@ -10,12 +10,16 @@ import org.apache.commons.math3.distribution.*;
 public class MainTestHarness {
     
     private static Random rand = new Random();
-    private static final int MAX_PAGE_ITERATIONS = 100000;
+    private static final int MAX_PAGE_ITERATIONS = 100000;      // Should not see this (normally)
+    private static final double HMM_GAUSSIAN_THRESH = 5.0;      // We're starting with 1.0 and going up to this
+    private static final double HMM_GAUSSIAN_INCR = 1.0;        // How much we increment the threshold.
+    private static final double HMM_GAUSSIAN_TRIALS = 1000.0;   // For single-source Gaussian this was 10,000
 
     /**
      * This will run a bunch of experiments and print to standard output, so it's probably best to
      * save all this info in random files. When plotting, be sure to use pyplot's y-scale setup if
-     * using the false alarm rate, because that depends exponentially on the threshold.
+     * using the false alarm rate, because that depends exponentially on the threshold. May need to
+     * fix axes as well by using plt.xlim(start, end) etc.
      * 
      * @param args Nothing for now
      */
@@ -27,13 +31,18 @@ public class MainTestHarness {
         System.out.println("Done.");
     }
     
-    /** Conducts the HMM Gaussian source tests. Comment out if desired. */
+    /** 
+     * Conducts the HMM Gaussian source tests. Comment out if desired. Notice that this will play a key
+     * role in how well our results look like. It's kind of a black art to figure out the best set of
+     * HMM states since it's so easy to get no false alarms or all false alarms, which doesn't give us
+     * info on detection delay.
+     */
     public static void conductHMMGaussianSourceTests() {
         int numSensors = 10;
         int numHMMStates = 25;
         NormalDistribution benignStdDev = new NormalDistribution(0.0, 1.0); // Used to generate the benign standard deviations
         NormalDistribution[] benignNormals = new NormalDistribution[numHMMStates];
-        NormalDistribution malignantStdDev = new NormalDistribution(0.0, 4.25); // Need to make this different from benign
+        NormalDistribution malignantStdDev = new NormalDistribution(0.0, 4.35); // Need to make this different from benign
         NormalDistribution[] malignantNormals = new NormalDistribution[numHMMStates];
         // Use a "folded normal" distribution of the standard deviations with Math.abs( ... ).
         for (int i = 0; i < numHMMStates; i++) {
@@ -49,9 +58,9 @@ public class MainTestHarness {
         System.out.println("\n\nNow doing Page's test in parallel ...");
         testParallelPageHMMGaussian(hmm1, hmm2, numSensors);
         System.out.println("\n\nNow doing the centralized entity Test ...");
-        //testIdealCenterHMMGaussian(hmm1, hmm2, numSensors);
+        testIdealCenterHMMGaussian(hmm1, hmm2, numSensors);
         System.out.println("\n\nNow doing running consensus ...");
-        //testRunningConsensusHMMGaussian(hmm1, hmm2, numSensors);
+        testRunningConsensusHMMGaussian(hmm1, hmm2, numSensors);
     }
     
     /** Conducts the single-source, Gaussian tests. Comment out if desired. */
@@ -79,18 +88,115 @@ public class MainTestHarness {
     public static void testRunningConsensusHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M) {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();
-        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+        for (double threshold = 1.0; threshold <= HMM_GAUSSIAN_THRESH; threshold += HMM_GAUSSIAN_INCR) {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
-            double averageDetectionDelay = -1.0;
+            int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
-            for (int trial = 1; trial <= 10000; trial++) {
-                // TODO
+            for (int trial = 1; trial <= HMM_GAUSSIAN_TRIALS; trial++) {
+                if (trial % 250 == 0) System.out.println("trial " + trial);
+                hmm1.resetState();
+                hmm2.resetState();
+                boolean pageTestDone = false;
+                int threshForChange = 500;
+                int iteration = 0;
+
+                 // Each of the M elements here has its own "clamped observation" list. Also need to set up cache.
+                ArrayList<ArrayList<Double>> listOfClampedObservations = new ArrayList<ArrayList<Double>>();
+                ArrayList<double[]> cachedLogForwardProbs1 = new ArrayList<double[]>();
+                ArrayList<double[]> cachedLogForwardProbs2 = new ArrayList<double[]>();
+                for (int i = 0; i < M; i++) {
+                    ArrayList<Double> emptyList = new ArrayList<Double>();
+                    listOfClampedObservations.add(emptyList);
+                    cachedLogForwardProbs1.add(new double[hmm1.getNumStates()]);
+                    cachedLogForwardProbs2.add(new double[hmm2.getNumStates()]);
+                }               
+                double[] previousScores = new double[M];
+                while (!pageTestDone) {
+                    double[] observations = new double[M];
+                    if (iteration < threshForChange) {
+                        totalSamplesFalse++;
+                        hmm1.generateNextState();
+                        for (int i = 0; i < M; i++) {
+                            observations[i] = hmm1.generateObservation();
+                        }
+                    } else {
+                        hmm2.generateNextState();
+                        for (int i = 0; i < M; i++) {
+                            observations[i] = hmm2.generateObservation();
+                        }
+                    }               
+
+                    // Set up the equation [S_n] = W_n*[S_{n-1}] + M*W_n*[l(x)], so first set up the last double[].
+                    double[] logLikelihoods = new double[M];
+                    for (int i = 0; i < M; i++) {
+                        listOfClampedObservations.get(i).add(observations[i]);  // Don't forget to add observations!
+                        if (listOfClampedObservations.get(i).size() == 1) {
+                            cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbabilityBaseCase(observations[i]));
+                            cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbabilityBaseCase(observations[i]));
+                        } else {
+                            cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbability(
+                                    cachedLogForwardProbs1.get(i), listOfClampedObservations.get(i)));
+                            cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbability(
+                                    cachedLogForwardProbs2.get(i), listOfClampedObservations.get(i)));
+                        }
+                        double benignObservation = Double.NEGATIVE_INFINITY;
+                        for (int state = 0; state < hmm1.getNumStates(); state++) {
+                            benignObservation = logSum(benignObservation, cachedLogForwardProbs1.get(i)[state]);
+                        }
+                        double malignantObservation = Double.NEGATIVE_INFINITY;
+                        for (int state = 0; state < hmm2.getNumStates(); state++) {
+                            malignantObservation = logSum(malignantObservation, cachedLogForwardProbs2.get(i)[state]);
+                        }
+                        //logLikelihoods[i] = M * Math.log(n2.density(observations[i]) / n1.density(observations[i]));
+                        logLikelihoods[i] = M * (malignantObservation - benignObservation); // I really hope this is correct.
+                    }
+                    // Now pick the 5 pairs we need to exchange
+                    for (int pair = 0; pair < 5; pair++) {
+                        int firstIndex = randInt(0, M-1);
+                        int secondIndex = randInt(0, M-1);
+                        while (secondIndex == firstIndex) {
+                            secondIndex = randInt(0, M-1);
+                        }
+                        double firstAverage = (previousScores[firstIndex] + previousScores[secondIndex]) / 2.0;
+                        previousScores[firstIndex] = firstAverage;
+                        previousScores[secondIndex] = firstAverage;
+                        double secondAverage = (logLikelihoods[firstIndex] + logLikelihoods[secondIndex]) / 2.0;
+                        logLikelihoods[firstIndex] = secondAverage;
+                        logLikelihoods[secondIndex] = secondAverage;
+                    }
+                    // We're done with the pairwise stuff so now it's a matter of adding two things together.
+                    double[] currentScores = new double[M];
+                    for (int i = 0; i < M; i++) {
+                        currentScores[i] = Math.max(0.0, previousScores[i] + logLikelihoods[i]);
+                    }
+                    for (int i = 0; i < M; i++) {
+                        previousScores[i] = currentScores[i];
+                    }
+                    if (currentScores[0] > threshold || iteration >= MAX_PAGE_ITERATIONS) {
+                        if (iteration < threshForChange) {
+                            totalFalseAlarms++;
+                        } else if (iteration >= threshForChange) {
+                            if (iteration >= MAX_PAGE_ITERATIONS) System.out.println("At maximum number of iterations.");
+                            pageTestDone = true;
+                            totalDetectionDelay += (iteration = 500);
+                        }
+                    }
+                    
+                    // I think this resetting will work
+                    for (int i = 0; i < M; i++) {
+                        if (currentScores[i] == 0.0) {
+                            listOfClampedObservations.set(i, new ArrayList<Double>());  // Reset the observation list
+                        }
+                    }
+                    totalSamples++;
+                    iteration++;
+                }
             }
-            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, totalDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
-            detectionDelays.add(averageDetectionDelay);
+            detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
         }
         printFinalStatistics(falseAlarmRates, detectionDelays);
     }
@@ -105,18 +211,94 @@ public class MainTestHarness {
     public static void testIdealCenterHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M) {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();       
-        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+        for (double threshold = 1.0; threshold <= HMM_GAUSSIAN_THRESH; threshold += HMM_GAUSSIAN_INCR) {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
-            double averageDetectionDelay = -1.0;
+            int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
-            for (int trial = 1; trial <= 10000; trial++) {
-                // TODO
+            for (int trial = 1; trial <= HMM_GAUSSIAN_TRIALS; trial++) {
+                if (trial % 250 == 0) System.out.println("trial " + trial);
+                hmm1.resetState();
+                hmm2.resetState();
+                boolean pageTestDone = false;
+                int threshForChange = 500;
+                int iteration = 0;
+
+                // Each of the M elements here has its own "clamped observation" list. Also need to set up cache.
+                ArrayList<ArrayList<Double>> listOfClampedObservations = new ArrayList<ArrayList<Double>>();
+                ArrayList<double[]> cachedLogForwardProbs1 = new ArrayList<double[]>();
+                ArrayList<double[]> cachedLogForwardProbs2 = new ArrayList<double[]>();
+                for (int i = 0; i < M; i++) {
+                    ArrayList<Double> emptyList = new ArrayList<Double>();
+                    listOfClampedObservations.add(emptyList);
+                    cachedLogForwardProbs1.add(new double[hmm1.getNumStates()]);
+                    cachedLogForwardProbs2.add(new double[hmm2.getNumStates()]);
+                }
+                double previousScore = 0.0; // Must use a single value for the score portion
+                
+                // Now proceed with Page's test iteration
+                while (!pageTestDone) {
+                    double[] observations = new double[M];
+                    if (iteration < threshForChange) {
+                        totalSamplesFalse++;
+                        hmm1.generateNextState();
+                        for (int i = 0; i < M; i++) {
+                            observations[i] = hmm1.generateObservation();
+                        }
+                    } else {
+                        hmm2.generateNextState();
+                        for (int i = 0; i < M; i++) {
+                            observations[i] = hmm2.generateObservation();
+                        }
+                    }
+                    double sumOfLogRatios = 0.0;
+                    for (int i = 0; i < M; i++) {
+                        listOfClampedObservations.get(i).add(observations[i]);
+                        if (listOfClampedObservations.get(i).size() == 1) {
+                            cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbabilityBaseCase(observations[i]));
+                            cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbabilityBaseCase(observations[i]));
+                        } else {
+                            cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbability(
+                                    cachedLogForwardProbs1.get(i), listOfClampedObservations.get(i)));
+                            cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbability(
+                                    cachedLogForwardProbs2.get(i), listOfClampedObservations.get(i)));
+                        }
+                        double benignObservation = Double.NEGATIVE_INFINITY;
+                        for (int state = 0; state < hmm1.getNumStates(); state++) {
+                            benignObservation = logSum(benignObservation, cachedLogForwardProbs1.get(i)[state]);
+                        }
+                        double malignantObservation = Double.NEGATIVE_INFINITY;
+                        for (int state = 0; state < hmm2.getNumStates(); state++) {
+                            malignantObservation = logSum(malignantObservation, cachedLogForwardProbs2.get(i)[state]);
+                        }
+                        double likelihoodComponent = malignantObservation - benignObservation;
+                        sumOfLogRatios += likelihoodComponent;
+                    }
+
+                    double currentScore = Math.max(0.0, previousScore + sumOfLogRatios);
+                    previousScore = currentScore;
+                    if (currentScore > threshold || iteration >= MAX_PAGE_ITERATIONS) {
+                        if (iteration < threshForChange) {
+                            totalFalseAlarms++;
+                        } else {
+                            if (iteration >= MAX_PAGE_ITERATIONS) System.out.println("At maximum number of iterations.");
+                            pageTestDone = true;
+                            totalDetectionDelay += (iteration - 500);
+                        }
+                    }
+                    if (currentScore == 0) {
+                        for (int i = 0; i < M; i++) {
+                            listOfClampedObservations.set(i, new ArrayList<Double>());  // Reset the observation list
+                        }
+                    }
+                    totalSamples++;
+                    iteration++;
+                }
             }
-            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, totalDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
-            detectionDelays.add(averageDetectionDelay);
+            detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
         }
         printFinalStatistics(falseAlarmRates, detectionDelays);
     }
@@ -131,14 +313,14 @@ public class MainTestHarness {
     public static void testParallelPageHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M) {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();       
-        for (double threshold = 1.0; threshold <= 10.0; threshold += 1.0) {
+        for (double threshold = 1.0; threshold <= HMM_GAUSSIAN_THRESH; threshold += HMM_GAUSSIAN_INCR) {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
-            double averageDetectionDelay = -1.0;
+            int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
-            for (int trial = 1; trial <= 1000; trial++) {
-                if (trial % 1000 == 0) System.out.println("trial " + trial);
+            for (int trial = 1; trial <= HMM_GAUSSIAN_TRIALS; trial++) {
+                if (trial % 250 == 0) System.out.println("trial " + trial);
                 hmm1.resetState();
                 hmm2.resetState();
                 boolean pageTestDone = false;
@@ -208,8 +390,7 @@ public class MainTestHarness {
                         } else {
                             if (iteration >= MAX_PAGE_ITERATIONS) System.out.println("Note: we're at max iterations");
                             pageTestDone = true;
-                            int thisDetectionDelay = iteration - 500;
-                            averageDetectionDelay = ((trial-1)*averageDetectionDelay + thisDetectionDelay) / ((double) trial);
+                            totalDetectionDelay += (iteration - 500);
                         }
                     }
                     
@@ -223,9 +404,9 @@ public class MainTestHarness {
                     iteration++;
                 }
             }
-            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, totalDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
-            detectionDelays.add(averageDetectionDelay);
+            detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
         }
         printFinalStatistics(falseAlarmRates, detectionDelays);
     }
@@ -240,15 +421,15 @@ public class MainTestHarness {
     public static void testSinglePageHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M)  {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();       
-        for (double threshold = 1.0; threshold <= 10.0; threshold += 1.0) {
+        for (double threshold = 1.0; threshold <= HMM_GAUSSIAN_THRESH; threshold += HMM_GAUSSIAN_INCR) {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
-            double averageDetectionDelay = -1.0;
+            int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
             
             // For each trial, reset HMM states. Then proceed as normal but need to have list of observations.
-            for (int trial = 1; trial <= 1000; trial++) {
+            for (int trial = 1; trial <= HMM_GAUSSIAN_TRIALS; trial++) {
                 if (trial % 250 == 0) System.out.println("trial " + trial);
                 hmm1.resetState();
                 hmm2.resetState();
@@ -307,9 +488,8 @@ public class MainTestHarness {
                         } else {
                             if (iteration >= MAX_PAGE_ITERATIONS) System.out.println("Note: we're at max iterations");
                             pageTestDone = true;
-                            int thisDetectionDelay = iteration - 500;
-                            averageDetectionDelay = ((trial-1)*averageDetectionDelay + thisDetectionDelay) / ((double) trial);
-                            //System.out.println("average detection delay = " + averageDetectionDelay + " with false alarms: " + totalFalseAlarms);
+                            totalDetectionDelay += (iteration - 500);
+                            //System.out.println("total detection delay = " + totalDetectionDelay);
                         }
                     }
                     if (currentScore == 0.0) {
@@ -319,12 +499,16 @@ public class MainTestHarness {
                     iteration++;
                 }
             }
-            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, totalDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
-            detectionDelays.add(averageDetectionDelay);
+            detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
         }
         printFinalStatistics(falseAlarmRates, detectionDelays);
     }
+    
+    ////////////////////////////
+    // Single-source Gaussian //
+    ////////////////////////////
 
     /**
      * This will be perhaps the most interesting part of this code: the Running Consensus scheme. One
@@ -343,7 +527,7 @@ public class MainTestHarness {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
-            double averageDetectionDelay = -1.0;
+            int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
             for (int trial = 1; trial <= 10000; trial++) {
                 boolean pageTestDone = false;
@@ -399,17 +583,16 @@ public class MainTestHarness {
                             totalFalseAlarms++;
                         } else if (iteration >= threshForChange) {
                             pageTestDone = true;
-                            int thisDetectionDelay = iteration - 500;
-                            averageDetectionDelay = ((trial-1)*averageDetectionDelay + thisDetectionDelay) / ((double) trial);                           
+                            totalDetectionDelay += (iteration - 500);
                         }
                     }
                     totalSamples++;
                     iteration++;
                 }
             }
-            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, totalDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
-            detectionDelays.add(averageDetectionDelay);
+            detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
         }
         printFinalStatistics(falseAlarmRates, detectionDelays);
     }    
@@ -429,7 +612,7 @@ public class MainTestHarness {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
-            double averageDetectionDelay = -1.0;
+            int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
             for (int trial = 1; trial <= 10000; trial++) {
                 boolean pageTestDone = false;
@@ -459,17 +642,16 @@ public class MainTestHarness {
                             totalFalseAlarms++;
                         } else if (iteration >= threshold) {
                             pageTestDone = true;
-                            int thisDetectionDelay = iteration - 500;
-                            averageDetectionDelay = ((trial-1)*averageDetectionDelay + thisDetectionDelay) / ((double) trial);
+                            totalDetectionDelay += (iteration - 500);
                         }
                     }
                     totalSamples++;
                     iteration++;
                 }
             }
-            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, totalDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
-            detectionDelays.add(averageDetectionDelay);
+            detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
         }       
         printFinalStatistics(falseAlarmRates, detectionDelays);
     }
@@ -489,7 +671,7 @@ public class MainTestHarness {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
-            double averageDetectionDelay = -1.0;
+            int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
             for (int trial = 1; trial <= 10000; trial++) {
                 boolean pageTestDone = false;
@@ -524,17 +706,16 @@ public class MainTestHarness {
                             totalFalseAlarms++;
                         } else if (iteration >= threshold) {
                             pageTestDone = true;
-                            int thisDetectionDelay = iteration - 500;
-                            averageDetectionDelay = ((trial-1)*averageDetectionDelay + thisDetectionDelay) / ((double) trial);
+                            totalDetectionDelay += (iteration - 500);
                         }
                     }
                     totalSamples++;
                     iteration++;
                 }
             }
-            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, totalDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
-            detectionDelays.add(averageDetectionDelay);
+            detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
         }
         printFinalStatistics(falseAlarmRates, detectionDelays);
     }
@@ -557,7 +738,7 @@ public class MainTestHarness {
             int totalFalseAlarms = 0;   // Total times Page's test exceeds thresh when it's benign
             int totalSamplesFalse = 0;  // Total samples drawn before malignant distribution begins
             int totalSamples = 0;       // Total samples drawn overall across all trials here
-            double averageDetectionDelay = -1.0;
+            int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
             for (int trial = 1; trial <= 10000; trial++) {
                 // Now let's go through the iterations to perform the test
@@ -581,17 +762,16 @@ public class MainTestHarness {
                             totalFalseAlarms++;
                         } else if (iteration >= threshForChange) {
                             pageTestDone = true;
-                            int thisDetectionDelay = iteration - 500;
-                            averageDetectionDelay = ((trial-1)*averageDetectionDelay + thisDetectionDelay) / ((double) trial);
+                            totalDetectionDelay += (iteration - 500);
                         }
                     }
                     totalSamples++;
                     iteration++;
                 }
             }
-            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
+            printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, totalDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
-            detectionDelays.add(averageDetectionDelay);
+            detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
         }
         printFinalStatistics(falseAlarmRates, detectionDelays);
     }
@@ -602,13 +782,13 @@ public class MainTestHarness {
     
     /** Prints some statistics after a single threshold's iteration has concluded. Saves some code space. */
     private static void printStatisticsAfterThresh(int totalFalseAlarms, int totalSamplesFalse, int totalSamples,
-            double averageDetectionDelay) {
+            int totalDetectionDelay) {
         System.out.println("False alarms = " + totalFalseAlarms);
         System.out.println("Total samples (before thresh) = " + totalSamplesFalse);
         System.out.println("Total samples = " + totalSamples);
         double ratio = ((double) totalFalseAlarms) / totalSamplesFalse;
         System.out.println("Ratio = " + ratio);
-        System.out.println("Average detection delay = " + averageDetectionDelay);       
+        System.out.println("Total detection delay = " + totalDetectionDelay);       
     }
 
     /** Prints the false alarm & detection delay lists after going through all iterations for a test case */
