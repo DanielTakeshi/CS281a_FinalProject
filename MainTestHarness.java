@@ -11,7 +11,7 @@ public class MainTestHarness {
     
     private static Random rand = new Random();
     private static final int MAX_PAGE_ITERATIONS = 100000;      // Should not see this (normally)
-    private static final double HMM_GAUSSIAN_THRESH = 5.0;      // We're starting with 1.0 and going up to this
+    private static final double HMM_GAUSSIAN_THRESH = 1.0;      // We're starting with 1.0 and going up to this
     private static final double HMM_GAUSSIAN_INCR = 1.0;        // How much we increment the threshold.
     private static final double HMM_GAUSSIAN_TRIALS = 1000.0;   // For single-source Gaussian this was 10,000
 
@@ -24,10 +24,14 @@ public class MainTestHarness {
      * @param args Nothing for now
      */
     public static void main(String[] args) {
-        //System.out.println("Now testing with a one-state, Gaussian source.");
-        //conductSingleGaussianSourceTests();
-        System.out.println("Done w/one-state Gaussian source. Now doing the HMM Gaussian source.");
-        conductHMMGaussianSourceTests();
+        boolean doSingleSourceGaussian = false;     // Will usually be false from now on
+        boolean doDistributionTest = true;
+        if (doSingleSourceGaussian) {
+            System.out.println("Now testing with a one-state, Gaussian source.");
+            conductSingleGaussianSourceTests();
+        }
+        System.out.println("Now testing with an HMM Gaussian source.");
+        conductHMMGaussianSourceTests(doDistributionTest);
         System.out.println("Done.");
     }
     
@@ -36,31 +40,51 @@ public class MainTestHarness {
      * role in how well our results look like. It's kind of a black art to figure out the best set of
      * HMM states since it's so easy to get no false alarms or all false alarms, which doesn't give us
      * info on detection delay.
+     * 
+     * @param doDistributionTest If true, we do a special distribution test designed to check if we are
+     *      going to do all four tests or if we're only doing the single page's test multiple times.
      */
-    public static void conductHMMGaussianSourceTests() {
+    public static void conductHMMGaussianSourceTests(boolean doDistributionTest) {
         int numSensors = 10;
         int numHMMStates = 25;
-        NormalDistribution benignStdDev = new NormalDistribution(0.0, 1.0); // Used to generate the benign standard deviations
-        NormalDistribution[] benignNormals = new NormalDistribution[numHMMStates];
-        NormalDistribution malignantStdDev = new NormalDistribution(0.0, 4.35); // Need to make this different from benign
-        NormalDistribution[] malignantNormals = new NormalDistribution[numHMMStates];
-        // Use a "folded normal" distribution of the standard deviations with Math.abs( ... ).
-        for (int i = 0; i < numHMMStates; i++) {
-            benignNormals[i] = new NormalDistribution(0, Math.abs(benignStdDev.sample()));
-            System.out.println("Benign " + i + " has st dev " + benignNormals[i].getStandardDeviation());
-            malignantNormals[i] = new NormalDistribution(0.1, Math.abs(malignantStdDev.sample()));
-            System.out.println("Malignant " + i + " has st dev " + malignantNormals[i].getStandardDeviation());
+        NormalDistribution benignStdDev = new NormalDistribution(0.0, 1.0);     // Generates benign s.d.
+        NormalDistribution malignantStdDev = new NormalDistribution(0.0, 4.35); // Seems like 4-ish is good?
+        System.out.println("Here, detection tests are from HMMs with " + numHMMStates + " states.");
+        if (doDistributionTest) {
+            List<Double> rates = new ArrayList<Double>();
+            for (int k = 0; k < 100; k++) {
+                System.out.println("On test " + k);
+                NormalDistribution[] benignNormals = new NormalDistribution[numHMMStates];
+                NormalDistribution[] malignantNormals = new NormalDistribution[numHMMStates];
+                for (int i = 0; i < numHMMStates; i++) {
+                    benignNormals[i] = new NormalDistribution(0, Math.abs(benignStdDev.sample())); // Folded normal
+                    malignantNormals[i] = new NormalDistribution(0.1, Math.abs(malignantStdDev.sample()));
+                }
+                NormalHiddenMarkovModel hmm1 = new NormalHiddenMarkovModel(numHMMStates, benignNormals);
+                NormalHiddenMarkovModel hmm2 = new NormalHiddenMarkovModel(numHMMStates, malignantNormals);
+                double falseAlarmRate = testSinglePageHMMGaussian(hmm1, hmm2, numSensors);               
+                rates.add(falseAlarmRate);
+            }
+            System.out.println("Done with single Page's test. Here are the f.a. rates:");
+            System.out.println(rates);
+        } else {
+            NormalDistribution[] benignNormals = new NormalDistribution[numHMMStates];
+            NormalDistribution[] malignantNormals = new NormalDistribution[numHMMStates];
+            for (int i = 0; i < numHMMStates; i++) {
+                benignNormals[i] = new NormalDistribution(0, Math.abs(benignStdDev.sample())); // Folded normal
+                malignantNormals[i] = new NormalDistribution(0.1, Math.abs(malignantStdDev.sample()));
+            }
+            NormalHiddenMarkovModel hmm1 = new NormalHiddenMarkovModel(numHMMStates, benignNormals);
+            NormalHiddenMarkovModel hmm2 = new NormalHiddenMarkovModel(numHMMStates, malignantNormals);
+            System.out.println("\n\nNow doing a single Page's test ...");
+            testSinglePageHMMGaussian(hmm1, hmm2, numSensors);
+            System.out.println("\n\nNow doing Page's test in parallel ...");
+            testParallelPageHMMGaussian(hmm1, hmm2, numSensors);
+            System.out.println("\n\nNow doing the centralized entity Test ...");
+            testIdealCenterHMMGaussian(hmm1, hmm2, numSensors);
+            System.out.println("\n\nNow doing running consensus ...");
+            testRunningConsensusHMMGaussian(hmm1, hmm2, numSensors);
         }
-        NormalHiddenMarkovModel hmm1 = new NormalHiddenMarkovModel(numHMMStates, benignNormals);
-        NormalHiddenMarkovModel hmm2 = new NormalHiddenMarkovModel(numHMMStates, malignantNormals);
-        System.out.println("\n\nNow doing a single Page's test ...");
-        testSinglePageHMMGaussian(hmm1, hmm2, numSensors);
-        System.out.println("\n\nNow doing Page's test in parallel ...");
-        testParallelPageHMMGaussian(hmm1, hmm2, numSensors);
-        System.out.println("\n\nNow doing the centralized entity Test ...");
-        testIdealCenterHMMGaussian(hmm1, hmm2, numSensors);
-        System.out.println("\n\nNow doing running consensus ...");
-        testRunningConsensusHMMGaussian(hmm1, hmm2, numSensors);
     }
     
     /** Conducts the single-source, Gaussian tests. Comment out if desired. */
@@ -418,7 +442,7 @@ public class MainTestHarness {
      * @param hmm2
      * @param M
      */
-    public static void testSinglePageHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M)  {
+    public static double testSinglePageHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M)  {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();       
         for (double threshold = 1.0; threshold <= HMM_GAUSSIAN_THRESH; threshold += HMM_GAUSSIAN_INCR) {
@@ -504,6 +528,8 @@ public class MainTestHarness {
             detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
         }
         printFinalStatistics(falseAlarmRates, detectionDelays);
+        // New
+        return falseAlarmRates.get(0);
     }
     
     ////////////////////////////
