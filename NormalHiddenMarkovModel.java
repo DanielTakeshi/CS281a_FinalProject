@@ -36,24 +36,34 @@ class NormalHiddenMarkovModel {
         return this.internalState;
     }
     
+    /** Returns the number of states. */
+    public int getNumStates() {
+        return this.numStates;
+    }
+    
     /** Resets the state back to zero, e.g., if we're in a loop and re-using this HMM */
     public void resetState() {
         this.internalState = 0;
     }
+    
+    /** Useful to print transitions and have newlines set appropriately */
+    public void printTransitions() {
+        for (int i = 0; i < this.transitions.length; i++) {
+            System.out.println(Arrays.toString(this.transitions[i]));
+        }
+    }	
        
-    /** Generates the next state according to the transition matrix (and exponentiates). */
-    public int generateNextState() {
+    /** Internally generates the next state according to the transition matrix (and exponentiates). */
+    public void generateNextState() {
         double value = (new Random()).nextDouble();
         double sum = Math.exp(this.transitions[this.internalState][0]);
         for (int i = 0; i < numStates-1; i++) {
             if (value < sum) {
                 this.internalState = i;
-                return i;
             }
             sum += Math.exp(this.transitions[this.internalState][i+1]);
         }
         this.internalState = numStates-1;
-        return numStates-1;
     }
 
     /** Samples an observation from our current state. */
@@ -127,6 +137,44 @@ class NormalHiddenMarkovModel {
         result = Double.NEGATIVE_INFINITY;
         for (int state = 0; state < numStates; state++) {
             result = logAdd(result, tempArray[observations.size()-1][state]);
+        }
+        return result;
+    }
+    
+    /**
+     * Base case for the caching process.
+     * 
+     * @return An array that we can sum over (in log space) later to get a probability
+     */
+    public double[] cachedLogForwardProbabilityBaseCase(double observation) {
+        double[] result = new double[this.numStates];
+        for (int state = 0; state < numStates; state++) {
+            double logProb = this.transitions[0][state] + Math.log(this.stateEmissions[state].density(observation));
+            assert !Double.isNaN(logProb) : "Problem: logProb = " + logProb;
+            result[state] = logProb;
+        }
+        return result;
+    }
+
+    /**
+     * This way, by caching the result, we'll get some faster probabilities. This assumes we are not in the
+     * base case.
+     * 
+     * @param previous The previous row (well, "column" the way I intuitively see it) of the "trellis"
+     * @param observations The list of observations, though I'm probably only going to use the last "column"
+     * @return An array of the updated forward probabilities at each state, which means we sum them up later.
+     */
+    public double[] cachedLogForwardProbability(double[] previous, List<Double> observations) {
+        double thisObs = observations.get(observations.size() - 1);
+        double[] result = new double[this.numStates];
+        for (int j = 0; j < numStates; j++) {
+            double logSum = Double.NEGATIVE_INFINITY;
+            for (int i = 0; i < numStates; i++) {
+                double logComponent = previous[i] + transitions[i][j] + Math.log(stateEmissions[j].density(thisObs));
+                assert !Double.isNaN(logComponent) : "Problem: log component = " + logComponent;
+                logSum = logAdd(logSum, logComponent);
+            }
+            result[j] = logSum;
         }
         return result;
     }

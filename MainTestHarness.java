@@ -29,15 +29,17 @@ public class MainTestHarness {
     /** Conducts the HMM Gaussian source tests. Comment out if desired. */
     public static void conductHMMGaussianSourceTests() {
         int numSensors = 10;
-        int numHMMStates = 10;
-        NormalDistribution benignStdDev = new NormalDistribution(0, 1.0);       // Use sigma = 1.0
+        int numHMMStates = 20;
+        NormalDistribution benignStdDev = new NormalDistribution(0.0, 1.0); // Used to generate the benign standard deviations
         NormalDistribution[] benignNormals = new NormalDistribution[numHMMStates];
-        NormalDistribution malignantStdDev = new NormalDistribution(0, 1.5);    // Use sigma = 1.5
+        NormalDistribution malignantStdDev = new NormalDistribution(0.0, 4.0); // Need to make this different from benign
         NormalDistribution[] malignantNormals = new NormalDistribution[numHMMStates];
         // Use a "folded normal" distribution of the standard deviations with Math.abs( ... ).
         for (int i = 0; i < numHMMStates; i++) {
             benignNormals[i] = new NormalDistribution(0, Math.abs(benignStdDev.sample()));
-            malignantNormals[i] = new NormalDistribution(0, Math.abs(malignantStdDev.sample()));
+            System.out.println("Benign " + i + " has st dev " + benignNormals[i].getStandardDeviation());
+            malignantNormals[i] = new NormalDistribution(0.1, Math.abs(malignantStdDev.sample()));
+            System.out.println("Malignant " + i + " has st dev " + malignantNormals[i].getStandardDeviation());
         }
         NormalHiddenMarkovModel hmm1 = new NormalHiddenMarkovModel(numHMMStates, benignNormals);
         NormalHiddenMarkovModel hmm2 = new NormalHiddenMarkovModel(numHMMStates, malignantNormals);
@@ -59,11 +61,11 @@ public class MainTestHarness {
         System.out.println("\n\nNow doing a single Page's test ...");
         testSinglePageOneStateGaussian(n1, n2);
         System.out.println("\n\nNow doing Page's test in parallel ...");
-        testParallelPageOneStateGaussian(n1, n2, numSensors);
+        //testParallelPageOneStateGaussian(n1, n2, numSensors);
         System.out.println("\n\nNow doing the centralized entity Test ...");
-        testIdealCenterOneStateGaussian(n1, n2, numSensors);
+        //testIdealCenterOneStateGaussian(n1, n2, numSensors);
         System.out.println("\n\nNow doing running consensus ...");
-        testRunningConsensusOneStateGaussian(n1, n2, numSensors);       
+        //testRunningConsensusOneStateGaussian(n1, n2, numSensors);       
     }
     
     /**
@@ -154,7 +156,7 @@ public class MainTestHarness {
     public static void testSinglePageHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M)  {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();       
-        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+        for (double threshold = 1.0; threshold <= 20; threshold += 1.0) {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
@@ -162,8 +164,8 @@ public class MainTestHarness {
             System.out.println("Currently using threshold gamma = " + threshold);
             
             // For each trial, reset HMM states. Then proceed as normal but need to have list of observations.
-            for (int trial = 1; trial <= 10000; trial++) {
-                System.out.println("on trial " + trial);
+            for (int trial = 1; trial <= 5000; trial++) {
+                if (trial % 1000 == 0) System.out.println("trial " + trial);
                 hmm1.resetState();
                 hmm2.resetState();
                 boolean pageTestDone = false;
@@ -171,6 +173,8 @@ public class MainTestHarness {
                 int iteration = 0;
                 List<Double> clampedObservations = new ArrayList<Double>();
                 double previousScore = 0.0;
+                double[] cachedLogForwardProbabilities1 = new double[hmm1.getNumStates()]; // Cache of log probs
+                double[] cachedLogForwardProbabilities2 = new double[hmm2.getNumStates()]; // Cache of log probs
                 while (!pageTestDone) {
                     double observation = 0.0;
                     if (iteration < threshForChange) {
@@ -184,10 +188,30 @@ public class MainTestHarness {
                     clampedObservations.add(observation);
                     
                     // These take too long
-                    double benignObservation = hmm1.getLogForwardProbability(clampedObservations);
-                    double malignantObservation = hmm2.getLogForwardProbability(clampedObservations);
+                    //double benignObservation = hmm1.getLogForwardProbability(clampedObservations);
+                    //double malignantObservation = hmm2.getLogForwardProbability(clampedObservations);
+                    
+                    // So let's do it a faster way.
+                    if (clampedObservations.size() == 1) {
+                        cachedLogForwardProbabilities1 = hmm1.cachedLogForwardProbabilityBaseCase(observation);
+                        cachedLogForwardProbabilities2 = hmm2.cachedLogForwardProbabilityBaseCase(observation);
+                    } else {
+                        cachedLogForwardProbabilities1 = hmm1.cachedLogForwardProbability(
+                                cachedLogForwardProbabilities1, clampedObservations);
+                        cachedLogForwardProbabilities2 = hmm2.cachedLogForwardProbability(
+                                cachedLogForwardProbabilities2, clampedObservations);
+                    }
+                    double benignObservation = Double.NEGATIVE_INFINITY;
+                    for (int i = 0; i < hmm1.getNumStates(); i++) {
+                        benignObservation = logSum(benignObservation, cachedLogForwardProbabilities1[i]);
+                    }
+                    double malignantObservation = Double.NEGATIVE_INFINITY;
+                    for (int i = 0; i < hmm2.getNumStates(); i++) {
+                        malignantObservation = logSum(malignantObservation, cachedLogForwardProbabilities2[i]);
+                    }
 
-                    double likelihoodComponent = benignObservation - malignantObservation; // Remember, in log space!
+                    // Now back to normal...remember that this is in LOG space and that MALIGNANT comes BEFORE the BENIGN
+                    double likelihoodComponent = malignantObservation - benignObservation;
                     double currentScore = Math.max(0.0, previousScore + likelihoodComponent);
                     previousScore = currentScore;
                     if (currentScore > threshold) {
@@ -529,4 +553,24 @@ public class MainTestHarness {
         int randomNum = rand.nextInt((max - min) + 1) + min;
         return randomNum;
     }
+
+    /**
+     * Given log(x) and log(y), returns log(x+y). This method is from Dan Klein, but the formula is
+     * pretty commonplace.
+     * 
+     * @param logX This is log(x) for some x.
+     * @param logY This is log(y) for some y.
+     * @return The value log(x+y).
+     */
+	public static double logSum(double logX, double logY) {
+		if (logY > logX) {
+			double temp = logX;
+			logX = logY;
+			logY = temp;
+		}
+		if (logX == Double.NEGATIVE_INFINITY) { return logX; }
+		double negDiff = logY - logX;
+		if (negDiff < -20) { return logX; }
+		return logX + java.lang.Math.log(1.0 + java.lang.Math.exp(negDiff));
+	}
 }
