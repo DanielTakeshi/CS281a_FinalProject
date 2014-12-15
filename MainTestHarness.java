@@ -10,6 +10,7 @@ import org.apache.commons.math3.distribution.*;
 public class MainTestHarness {
     
     private static Random rand = new Random();
+    private static final int MAX_PAGE_ITERATIONS = 100000;
 
     /**
      * This will run a bunch of experiments and print to standard output, so it's probably best to
@@ -29,10 +30,10 @@ public class MainTestHarness {
     /** Conducts the HMM Gaussian source tests. Comment out if desired. */
     public static void conductHMMGaussianSourceTests() {
         int numSensors = 10;
-        int numHMMStates = 20;
+        int numHMMStates = 25;
         NormalDistribution benignStdDev = new NormalDistribution(0.0, 1.0); // Used to generate the benign standard deviations
         NormalDistribution[] benignNormals = new NormalDistribution[numHMMStates];
-        NormalDistribution malignantStdDev = new NormalDistribution(0.0, 4.0); // Need to make this different from benign
+        NormalDistribution malignantStdDev = new NormalDistribution(0.0, 4.25); // Need to make this different from benign
         NormalDistribution[] malignantNormals = new NormalDistribution[numHMMStates];
         // Use a "folded normal" distribution of the standard deviations with Math.abs( ... ).
         for (int i = 0; i < numHMMStates; i++) {
@@ -48,9 +49,9 @@ public class MainTestHarness {
         System.out.println("\n\nNow doing Page's test in parallel ...");
         testParallelPageHMMGaussian(hmm1, hmm2, numSensors);
         System.out.println("\n\nNow doing the centralized entity Test ...");
-        testIdealCenterHMMGaussian(hmm1, hmm2, numSensors);
+        //testIdealCenterHMMGaussian(hmm1, hmm2, numSensors);
         System.out.println("\n\nNow doing running consensus ...");
-        testRunningConsensusHMMGaussian(hmm1, hmm2, numSensors);
+        //testRunningConsensusHMMGaussian(hmm1, hmm2, numSensors);
     }
     
     /** Conducts the single-source, Gaussian tests. Comment out if desired. */
@@ -61,11 +62,11 @@ public class MainTestHarness {
         System.out.println("\n\nNow doing a single Page's test ...");
         testSinglePageOneStateGaussian(n1, n2);
         System.out.println("\n\nNow doing Page's test in parallel ...");
-        //testParallelPageOneStateGaussian(n1, n2, numSensors);
+        testParallelPageOneStateGaussian(n1, n2, numSensors);
         System.out.println("\n\nNow doing the centralized entity Test ...");
-        //testIdealCenterOneStateGaussian(n1, n2, numSensors);
+        testIdealCenterOneStateGaussian(n1, n2, numSensors);
         System.out.println("\n\nNow doing running consensus ...");
-        //testRunningConsensusOneStateGaussian(n1, n2, numSensors);       
+        testRunningConsensusOneStateGaussian(n1, n2, numSensors);       
     }
     
     /**
@@ -130,14 +131,97 @@ public class MainTestHarness {
     public static void testParallelPageHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M) {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();       
-        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+        for (double threshold = 1.0; threshold <= 10.0; threshold += 1.0) {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
             double averageDetectionDelay = -1.0;
             System.out.println("Currently using threshold gamma = " + threshold);
-            for (int trial = 1; trial <= 10000; trial++) {
-                // TODO
+            for (int trial = 1; trial <= 1000; trial++) {
+                if (trial % 1000 == 0) System.out.println("trial " + trial);
+                hmm1.resetState();
+                hmm2.resetState();
+                boolean pageTestDone = false;
+                int threshForChange = 500;
+                int iteration = 0;
+
+                // Each of the M elements here has its own "clamped observation" list. Also need to set up cache.
+                ArrayList<ArrayList<Double>> listOfClampedObservations = new ArrayList<ArrayList<Double>>();
+                ArrayList<double[]> cachedLogForwardProbs1 = new ArrayList<double[]>();
+                ArrayList<double[]> cachedLogForwardProbs2 = new ArrayList<double[]>();
+                for (int i = 0; i < M; i++) {
+                    ArrayList<Double> emptyList = new ArrayList<Double>();
+                    listOfClampedObservations.add(emptyList);
+                    cachedLogForwardProbs1.add(new double[hmm1.getNumStates()]);
+                    cachedLogForwardProbs2.add(new double[hmm2.getNumStates()]);
+                }
+                double[] previousScores = new double[M];
+                
+                // Now proceed with Page's test iteration
+                while (!pageTestDone) {
+                    double[] observation = new double[M];
+                    if (iteration < threshForChange) {
+                        totalSamplesFalse++;
+                        hmm1.generateNextState();
+                        for (int i = 0; i < M; i++) {
+                            observation[i] = hmm1.generateObservation();
+                        }
+                    } else {
+                        hmm2.generateNextState();
+                        for (int i = 0; i < M; i++) {
+                            observation[i] = hmm2.generateObservation();
+                        }
+                    }
+                    double[] currentScores = new double[M];
+                    for (int i = 0; i < M; i++) {
+                        listOfClampedObservations.get(i).add(observation[i]);
+                        if (listOfClampedObservations.get(i).size() == 1) {
+                            cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbabilityBaseCase(observation[i]));
+                            cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbabilityBaseCase(observation[i]));
+                        } else {
+                            cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbability(
+                                    cachedLogForwardProbs1.get(i), listOfClampedObservations.get(i)));
+                            cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbability(
+                                    cachedLogForwardProbs2.get(i), listOfClampedObservations.get(i)));
+                        }
+                        double benignObservation = Double.NEGATIVE_INFINITY;
+                        for (int state = 0; state < hmm1.getNumStates(); state++) {
+                            benignObservation = logSum(benignObservation, cachedLogForwardProbs1.get(i)[state]);
+                        }
+                        double malignantObservation = Double.NEGATIVE_INFINITY;
+                        for (int state = 0; state < hmm2.getNumStates(); state++) {
+                            malignantObservation = logSum(malignantObservation, cachedLogForwardProbs2.get(i)[state]);
+                        }
+                        double likelihoodComponent = malignantObservation - benignObservation;
+                        double currentScore = Math.max(0.0, previousScores[i] + likelihoodComponent);
+                        currentScores[i] = currentScore;
+                    }
+
+                    // Now with the scores, update previous score and check if it exceeds our threshold.
+                    for (int i = 0; i < M; i++) {
+                        previousScores[i] = currentScores[i];
+                    }
+                    double highestCurrentScore = maxArrayValue(currentScores);
+                    if (highestCurrentScore > threshold || iteration >= MAX_PAGE_ITERATIONS) {
+                        if (iteration < threshForChange) {
+                            totalFalseAlarms++;
+                        } else {
+                            if (iteration >= MAX_PAGE_ITERATIONS) System.out.println("Note: we're at max iterations");
+                            pageTestDone = true;
+                            int thisDetectionDelay = iteration - 500;
+                            averageDetectionDelay = ((trial-1)*averageDetectionDelay + thisDetectionDelay) / ((double) trial);
+                        }
+                    }
+                    
+                    // Now need to potentially reset any observation sequences
+                    for (int i = 0; i < M; i++) {
+                        if (currentScores[i] == 0.0) {
+                            listOfClampedObservations.set(i, new ArrayList<Double>());  // Reset the observation list
+                        }
+                    }
+                    totalSamples++;
+                    iteration++;
+                }
             }
             printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, averageDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
@@ -156,7 +240,7 @@ public class MainTestHarness {
     public static void testSinglePageHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M)  {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();       
-        for (double threshold = 1.0; threshold <= 20; threshold += 1.0) {
+        for (double threshold = 1.0; threshold <= 10.0; threshold += 1.0) {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
@@ -164,8 +248,8 @@ public class MainTestHarness {
             System.out.println("Currently using threshold gamma = " + threshold);
             
             // For each trial, reset HMM states. Then proceed as normal but need to have list of observations.
-            for (int trial = 1; trial <= 5000; trial++) {
-                if (trial % 1000 == 0) System.out.println("trial " + trial);
+            for (int trial = 1; trial <= 1000; trial++) {
+                if (trial % 250 == 0) System.out.println("trial " + trial);
                 hmm1.resetState();
                 hmm2.resetState();
                 boolean pageTestDone = false;
@@ -181,9 +265,11 @@ public class MainTestHarness {
                         totalSamplesFalse++;
                         hmm1.generateNextState();
                         observation = hmm1.generateObservation();
+                        //System.out.println("Observation from hmm1 " + observation);
                     } else {
                         hmm2.generateNextState();
                         observation = hmm2.generateObservation();
+                        //System.out.println("Observation from hmm2 " + observation);
                     }
                     clampedObservations.add(observation);
                     
@@ -213,14 +299,17 @@ public class MainTestHarness {
                     // Now back to normal...remember that this is in LOG space and that MALIGNANT comes BEFORE the BENIGN
                     double likelihoodComponent = malignantObservation - benignObservation;
                     double currentScore = Math.max(0.0, previousScore + likelihoodComponent);
+                    //System.out.println("iteration " + iteration + " with score " + currentScore);
                     previousScore = currentScore;
-                    if (currentScore > threshold) {
+                    if (currentScore > threshold || iteration >= MAX_PAGE_ITERATIONS) {
                         if (iteration < threshForChange) {
                             totalFalseAlarms++;
                         } else {
+                            if (iteration >= MAX_PAGE_ITERATIONS) System.out.println("Note: we're at max iterations");
                             pageTestDone = true;
                             int thisDetectionDelay = iteration - 500;
                             averageDetectionDelay = ((trial-1)*averageDetectionDelay + thisDetectionDelay) / ((double) trial);
+                            //System.out.println("average detection delay = " + averageDetectionDelay + " with false alarms: " + totalFalseAlarms);
                         }
                     }
                     if (currentScore == 0.0) {
