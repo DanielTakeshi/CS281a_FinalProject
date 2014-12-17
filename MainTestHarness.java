@@ -14,6 +14,7 @@ public class MainTestHarness {
     private static final double HMM_GAUSSIAN_THRESH = 1.0;      // We're starting with 1.0 and going up to this
     private static final double HMM_GAUSSIAN_INCR = 1.0;        // How much we increment the threshold.
     private static final double HMM_GAUSSIAN_TRIALS = 1000.0;   // For single-source Gaussian this was 10,000
+    private static final double SINGLE_GAUSSIAN_TRIALS = 10000.0;   // This is 10,000
 
     /**
      * This will run a bunch of experiments and print to standard output, so it's probably best to
@@ -25,13 +26,16 @@ public class MainTestHarness {
      */
     public static void main(String[] args) {
         boolean doSingleSourceGaussian = false;     // Will usually be false from now on
+        boolean doHMMSourceGaussian = true;
         boolean doDistributionTest = true;
         if (doSingleSourceGaussian) {
             System.out.println("Now testing with a one-state, Gaussian sourc.");
             conductSingleGaussianSourceTests();
         }
-        System.out.println("Now testing with an HMM Gaussian source.");
-        conductHMMGaussianSourceTests(doDistributionTest);
+        if (doHMMSourceGaussian) {
+            System.out.println("Now testing with an HMM Gaussian source.");
+            conductHMMGaussianSourceTests(doDistributionTest);
+        }
         System.out.println("Done.");
     }
     
@@ -544,7 +548,9 @@ public class MainTestHarness {
     
 
     ////////////////////////////
+    ////////////////////////////
     // Single-source Gaussian //
+    ////////////////////////////
     ////////////////////////////
 
 
@@ -561,13 +567,13 @@ public class MainTestHarness {
     public static void testRunningConsensusOneStateGaussian(NormalDistribution n1, NormalDistribution n2, int M) {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();
-        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+        for (double threshold = 0.5; threshold <= 5.0; threshold += 0.1) {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
             int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
-            for (int trial = 1; trial <= 10000; trial++) {
+            for (int trial = 1; trial <= SINGLE_GAUSSIAN_TRIALS; trial++) {
                 boolean pageTestDone = false;
                 int threshForChange = 500;
                 int iteration = 0;
@@ -630,7 +636,7 @@ public class MainTestHarness {
             }
             printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, totalDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
-            detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
+            detectionDelays.add( ((double) totalDetectionDelay) / SINGLE_GAUSSIAN_TRIALS);
         }
         printFinalStatistics(falseAlarmRates, detectionDelays);
     }    
@@ -646,13 +652,13 @@ public class MainTestHarness {
     public static void testIdealCenterOneStateGaussian(NormalDistribution n1, NormalDistribution n2, int M) {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();
-        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+        for (double threshold = 0.5; threshold <= 5.0; threshold += 0.1) {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
             int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
-            for (int trial = 1; trial <= 10000; trial++) {
+            for (int trial = 1; trial <= SINGLE_GAUSSIAN_TRIALS; trial++) {
                 boolean pageTestDone = false;
                 int threshForChange = 500;
                 int iteration = 0;
@@ -689,7 +695,7 @@ public class MainTestHarness {
             }
             printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, totalDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
-            detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
+            detectionDelays.add( ((double) totalDetectionDelay) / SINGLE_GAUSSIAN_TRIALS);
         }       
         printFinalStatistics(falseAlarmRates, detectionDelays);
     }
@@ -705,13 +711,13 @@ public class MainTestHarness {
     public static void testParallelPageOneStateGaussian(NormalDistribution n1, NormalDistribution n2, int M) {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();
-        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+        for (double threshold = 0.5; threshold <= 5.0; threshold += 0.1) {
             int totalFalseAlarms = 0;
             int totalSamplesFalse = 0;
             int totalSamples = 0;
             int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
-            for (int trial = 1; trial <= 10000; trial++) {
+            for (int trial = 1; trial <= SINGLE_GAUSSIAN_TRIALS; trial++) {
                 boolean pageTestDone = false;
                 int threshForChange = 500;
                 int iteration = 0;
@@ -753,7 +759,7 @@ public class MainTestHarness {
             }
             printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, totalDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
-            detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
+            detectionDelays.add( ((double) totalDetectionDelay) / SINGLE_GAUSSIAN_TRIALS);
         }
         printFinalStatistics(falseAlarmRates, detectionDelays);
     }
@@ -772,13 +778,13 @@ public class MainTestHarness {
     public static void testSinglePageOneStateGaussian(NormalDistribution n1, NormalDistribution n2) {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();
-        for (double threshold = 1.0; threshold <= 5.0; threshold += 0.1) {
+        for (double threshold = 0.5; threshold <= 5.0; threshold += 0.1) {
             int totalFalseAlarms = 0;   // Total times Page's test exceeds thresh when it's benign
             int totalSamplesFalse = 0;  // Total samples drawn before malignant distribution begins
             int totalSamples = 0;       // Total samples drawn overall across all trials here
             int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
-            for (int trial = 1; trial <= 10000; trial++) {
+            for (int trial = 1; trial <= SINGLE_GAUSSIAN_TRIALS; trial++) {
                 // Now let's go through the iterations to perform the test
                 boolean pageTestDone = false;
                 int threshForChange = 500; // Let's do this for simplicity.
@@ -809,7 +815,7 @@ public class MainTestHarness {
             }
             printStatisticsAfterThresh(totalFalseAlarms, totalSamplesFalse, totalSamples, totalDetectionDelay);
             falseAlarmRates.add( ((double) totalFalseAlarms) / totalSamplesFalse );
-            detectionDelays.add( ((double) totalDetectionDelay) / HMM_GAUSSIAN_TRIALS);
+            detectionDelays.add( ((double) totalDetectionDelay) / SINGLE_GAUSSIAN_TRIALS);
         }
         printFinalStatistics(falseAlarmRates, detectionDelays);
     }
