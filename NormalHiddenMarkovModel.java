@@ -161,16 +161,15 @@ class NormalHiddenMarkovModel {
      * base case.
      * 
      * @param previous The previous row (well, "column" the way I intuitively see it) of the "trellis"
-     * @param observations The list of observations, though I'm probably only going to use the last "column"
+     * @param observation The last observation in our list of observations (i.e., the last "column" of trellis)
      * @return An array of the updated forward probabilities at each state, which means we sum them up later.
      */
-    public double[] cachedLogForwardProbability(double[] previous, List<Double> observations) {
-        double thisObs = observations.get(observations.size() - 1);
+    public double[] cachedLogForwardProbability(double[] previous, double observation) {
         double[] result = new double[this.numStates];
         for (int j = 0; j < numStates; j++) {
             double logSum = Double.NEGATIVE_INFINITY;
             for (int i = 0; i < numStates; i++) {
-                double logComponent = previous[i] + transitions[i][j] + Math.log(stateEmissions[j].density(thisObs));
+                double logComponent = previous[i] + transitions[i][j] + Math.log(stateEmissions[j].density(observation));
                 assert !Double.isNaN(logComponent) : "Problem: log component = " + logComponent;
                 logSum = logAdd(logSum, logComponent);
             }

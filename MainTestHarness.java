@@ -29,7 +29,7 @@ public class MainTestHarness {
         boolean doHMMSourceGaussian = true;
         boolean doDistributionTest = true;
         if (doSingleSourceGaussian) {
-            System.out.println("Now testing with a one-state, Gaussian sourc.");
+            System.out.println("Now testing with a one-state, Gaussian source.");
             conductSingleGaussianSourceTests();
         }
         if (doHMMSourceGaussian) {
@@ -171,10 +171,8 @@ public class MainTestHarness {
                             cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbabilityBaseCase(observations[i]));
                             cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbabilityBaseCase(observations[i]));
                         } else {
-                            cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbability(
-                                    cachedLogForwardProbs1.get(i), listOfClampedObservations.get(i)));
-                            cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbability(
-                                    cachedLogForwardProbs2.get(i), listOfClampedObservations.get(i)));
+                            cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbability(cachedLogForwardProbs1.get(i), observations[i]));
+                            cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbability(cachedLogForwardProbs2.get(i), observations[i]));
                         }
                         double benignObservation = Double.NEGATIVE_INFINITY;
                         for (int state = 0; state < hmm1.getNumStates(); state++) {
@@ -294,10 +292,8 @@ public class MainTestHarness {
                             cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbabilityBaseCase(observations[i]));
                             cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbabilityBaseCase(observations[i]));
                         } else {
-                            cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbability(
-                                    cachedLogForwardProbs1.get(i), listOfClampedObservations.get(i)));
-                            cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbability(
-                                    cachedLogForwardProbs2.get(i), listOfClampedObservations.get(i)));
+                            cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbability(cachedLogForwardProbs1.get(i), observations[i]));
+                            cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbability(cachedLogForwardProbs2.get(i), observations[i]));
                         }
                         double benignObservation = Double.NEGATIVE_INFINITY;
                         for (int state = 0; state < hmm1.getNumStates(); state++) {
@@ -396,10 +392,9 @@ public class MainTestHarness {
                             cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbabilityBaseCase(observation[i]));
                             cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbabilityBaseCase(observation[i]));
                         } else {
-                            cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbability(
-                                    cachedLogForwardProbs1.get(i), listOfClampedObservations.get(i)));
-                            cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbability(
-                                    cachedLogForwardProbs2.get(i), listOfClampedObservations.get(i)));
+                            // Note: listOfClampedObservations.get(i) is like List<Double> observations, so only need last one.
+                            cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbability(cachedLogForwardProbs1.get(i), observation[i]));
+                            cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbability(cachedLogForwardProbs2.get(i), observation[i]));
                         }
                         double benignObservation = Double.NEGATIVE_INFINITY;
                         for (int state = 0; state < hmm1.getNumStates(); state++) {
@@ -471,7 +466,7 @@ public class MainTestHarness {
                 boolean pageTestDone = false;
                 int threshForChange = 500;
                 int iteration = 0;
-                List<Double> clampedObservations = new ArrayList<Double>();
+                List<Double> clampedObservations = new ArrayList<Double>(); // List of observations AFTER last reset
                 double previousScore = 0.0;
                 double[] cachedLogForwardProbabilities1 = new double[hmm1.getNumStates()]; // Cache of log probs
                 double[] cachedLogForwardProbabilities2 = new double[hmm2.getNumStates()]; // Cache of log probs
@@ -497,10 +492,8 @@ public class MainTestHarness {
                         cachedLogForwardProbabilities1 = hmm1.cachedLogForwardProbabilityBaseCase(observation);
                         cachedLogForwardProbabilities2 = hmm2.cachedLogForwardProbabilityBaseCase(observation);
                     } else {
-                        cachedLogForwardProbabilities1 = hmm1.cachedLogForwardProbability(
-                                cachedLogForwardProbabilities1, clampedObservations);
-                        cachedLogForwardProbabilities2 = hmm2.cachedLogForwardProbability(
-                                cachedLogForwardProbabilities2, clampedObservations);
+                        cachedLogForwardProbabilities1 = hmm1.cachedLogForwardProbability(cachedLogForwardProbabilities1, observation);
+                        cachedLogForwardProbabilities2 = hmm2.cachedLogForwardProbability(cachedLogForwardProbabilities2, observation);
                     }
                     double benignObservation = Double.NEGATIVE_INFINITY;
                     for (int i = 0; i < hmm1.getNumStates(); i++) {
