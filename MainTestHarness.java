@@ -11,8 +11,8 @@ public class MainTestHarness {
     
     private static Random rand = new Random();
     private static final int MAX_PAGE_ITERATIONS = 100000;      // Should not see this (normally)
-    private static final double HMM_GAUSSIAN_THRESH = 1.0;      // We're starting with 1.0 and going up to this
-    private static final double HMM_GAUSSIAN_INCR = 1.0;        // How much we increment the threshold.
+    private static final double HMM_GAUSSIAN_THRESH = 20.0;      // Starting with 1.0 and going up to this (inclusive)
+    private static final double HMM_GAUSSIAN_INCR = 0.5;        // How much we increment the threshold.
     private static final double HMM_GAUSSIAN_TRIALS = 1000.0;   // For single-source Gaussian this was 10,000
     private static final double SINGLE_GAUSSIAN_TRIALS = 10000.0;   // This is 10,000
 
@@ -87,12 +87,12 @@ public class MainTestHarness {
             }
             NormalHiddenMarkovModel hmm1 = new NormalHiddenMarkovModel(numHMMStates, benignNormals);
             NormalHiddenMarkovModel hmm2 = new NormalHiddenMarkovModel(numHMMStates, malignantNormals);
-            //System.out.println("\n\nNow doing a single Page's test ...");
-            //testSinglePageHMMGaussian(hmm1, hmm2, numSensors);
-            //System.out.println("\n\nNow doing Page's test in parallel ...");
-            //testParallelPageHMMGaussian(hmm1, hmm2, numSensors);
-            //System.out.println("\n\nNow doing the centralized entity Test ...");
-            //testIdealCenterHMMGaussian(hmm1, hmm2, numSensors);
+            System.out.println("\n\nNow doing a single Page's test ...");
+            testSinglePageHMMGaussian(hmm1, hmm2, numSensors);
+            System.out.println("\n\nNow doing Page's test in parallel ...");
+            testParallelPageHMMGaussian(hmm1, hmm2, numSensors);
+            System.out.println("\n\nNow doing the centralized entity Test ...");
+            testIdealCenterHMMGaussian(hmm1, hmm2, numSensors);
             System.out.println("\n\nNow doing running consensus ...");
             testRunningConsensusHMMGaussian(hmm1, hmm2, numSensors);
         }
@@ -229,7 +229,7 @@ public class MainTestHarness {
                         } else if (iteration >= threshForChange) {
                             if (iteration >= MAX_PAGE_ITERATIONS) System.out.println("At maximum number of iterations.");
                             pageTestDone = true;
-                            totalDetectionDelay += (iteration = 500);
+                            totalDetectionDelay += (iteration - 500);
                         }
                     }
                     
