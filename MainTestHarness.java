@@ -470,6 +470,7 @@ public class MainTestHarness {
                 double previousScore = 0.0;
                 double[] cachedLogForwardProbabilities1 = new double[hmm1.getNumStates()]; // Cache of log probs
                 double[] cachedLogForwardProbabilities2 = new double[hmm2.getNumStates()]; // Cache of log probs
+                
                 while (!pageTestDone) {
                     double observation = 0.0;
                     if (iteration < threshForChange) {
@@ -484,29 +485,42 @@ public class MainTestHarness {
                     }
                     clampedObservations.add(observation);
                     
-                    // These take too long
+                    // These take too long, so do it a faster way.
                     //double benignObservation = hmm1.getLogForwardProbability(clampedObservations);
                     //double malignantObservation = hmm2.getLogForwardProbability(clampedObservations);
-                    // So let's do it a faster way.
+
+                    // Like this! Need to compute FOUR terms for the log likelihood ratio term "likelihoodTerm" later
+                    double standardNormalizerLogLikelihood = Double.NEGATIVE_INFINITY;
+                    double anomalousNormalizerLogLikelihood = Double.NEGATIVE_INFINITY;
                     if (clampedObservations.size() == 1) {
                         cachedLogForwardProbabilities1 = hmm1.cachedLogForwardProbabilityBaseCase(observation);
                         cachedLogForwardProbabilities2 = hmm2.cachedLogForwardProbabilityBaseCase(observation);
+                        standardNormalizerLogLikelihood = 0.0;  // Exponentiates to 1 so it doesn't affect the likelihood term
+                        anomalousNormalizerLogLikelihood = 0.0; // Exponentiates to 1 so it doesn't affect the likelihood term
                     } else {
+                        for (int i = 0; i < cachedLogForwardProbabilities1.length; i++) {
+                            standardNormalizerLogLikelihood = logSum(standardNormalizerLogLikelihood, cachedLogForwardProbabilities1[i]);
+                        }
+                        for (int i = 0; i < cachedLogForwardProbabilities2.length; i++) {
+                            anomalousNormalizerLogLikelihood = logSum(anomalousNormalizerLogLikelihood, cachedLogForwardProbabilities2[i]);
+                        }
                         cachedLogForwardProbabilities1 = hmm1.cachedLogForwardProbability(cachedLogForwardProbabilities1, observation);
                         cachedLogForwardProbabilities2 = hmm2.cachedLogForwardProbability(cachedLogForwardProbabilities2, observation);
                     }
-                    double benignObservation = Double.NEGATIVE_INFINITY;
+                    double standardFullLogLikelihood = Double.NEGATIVE_INFINITY;
                     for (int i = 0; i < hmm1.getNumStates(); i++) {
-                        benignObservation = logSum(benignObservation, cachedLogForwardProbabilities1[i]);
+                        standardFullLogLikelihood = logSum(standardFullLogLikelihood, cachedLogForwardProbabilities1[i]);
                     }
-                    double malignantObservation = Double.NEGATIVE_INFINITY;
+                    double anomalousFullLogLikelihood = Double.NEGATIVE_INFINITY;
                     for (int i = 0; i < hmm2.getNumStates(); i++) {
-                        malignantObservation = logSum(malignantObservation, cachedLogForwardProbabilities2[i]);
+                        anomalousFullLogLikelihood = logSum(anomalousFullLogLikelihood, cachedLogForwardProbabilities2[i]);
                     }
 
-                    // Now back to normal...remember that this is in LOG space and that MALIGNANT comes BEFORE the BENIGN
-                    double likelihoodComponent = malignantObservation - benignObservation;
-                    double currentScore = Math.max(0.0, previousScore + likelihoodComponent);
+                    // Now back to normal...remember that this is in LOG space and that ANOMALOUS comes BEFORE STANDARD
+                    double likelihoodTerm = (anomalousFullLogLikelihood - anomalousNormalizerLogLikelihood) - 
+                            (standardFullLogLikelihood - standardNormalizerLogLikelihood);
+                    assert !Double.isNaN(likelihoodTerm);
+                    double currentScore = Math.max(0.0, previousScore + likelihoodTerm);
                     //System.out.println("iteration " + iteration + " with score " + currentScore);
                     previousScore = currentScore;
                     if (currentScore > threshold || iteration >= MAX_PAGE_ITERATIONS) {

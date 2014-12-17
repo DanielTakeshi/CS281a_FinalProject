@@ -72,31 +72,31 @@ class NormalHiddenMarkovModel {
     }
     
     /**
-	 * Given the number of states, creates a transition matrix 'transitions' where transitions[k] is the
-	 * vector of transition probabilities of the form a_{kx} where x is the index inside transitions[k],
-	 * so k is the prior state and x is the current one. Right now it initializes values to be uniformly
-	 * distributed between 0 and 1, and then normalizes by row. The transitions create an ergodic HMM.
-	 * ALSO it then takes logs, so everything that uses it should be in log-space (or be aware of that).
-	 * 
-	 * @param numStates The number of states in the HMM, i.e., transitions.length and transitions[k].length.
-	 * @return A random transition matrix, which could be used as the "A" matrix for an HMM.
-	 */
-	private double[][] generateTransitionProbabilities(int numStates) {
-	    double[][] transitions = new double[numStates][numStates];
-	    Random rand = new Random();
-	    for (int row = 0; row < numStates; row++) {
-	        double[] nonNormalizedValues = new double[numStates];
-	        double sum = 0.0;
-	        for (int i = 0; i < numStates; i++) {
-	            nonNormalizedValues[i] = rand.nextDouble();
-	            sum += nonNormalizedValues[i];
-	        }
-	        for (int i = 0; i < numStates; i++) {
-	            transitions[row][i] = Math.log(nonNormalizedValues[i] / sum);
-	        }
-	    }
-	    return transitions;
-	}
+     * Given the number of states, creates a transition matrix 'transitions' where transitions[k] is the
+     * vector of transition probabilities of the form a_{kx} where x is the index inside transitions[k],
+     * so k is the prior state and x is the current one. Right now it initializes values to be uniformly
+     * distributed between 0 and 1, and then normalizes by row. The transitions create an ergodic HMM.
+     * ALSO it then takes logs, so everything that uses it should be in log-space (or be aware of that).
+     * 
+     * @param numStates The number of states in the HMM, i.e., transitions.length and transitions[k].length.
+     * @return A random transition matrix, which could be used as the "A" matrix for an HMM.
+     */
+    private double[][] generateTransitionProbabilities(int numStates) {
+        double[][] transitions = new double[numStates][numStates];
+        Random rand = new Random();
+        for (int row = 0; row < numStates; row++) {
+            double[] nonNormalizedValues = new double[numStates];
+            double sum = 0.0;
+            for (int i = 0; i < numStates; i++) {
+                nonNormalizedValues[i] = rand.nextDouble();
+                sum += nonNormalizedValues[i];
+            }
+            for (int i = 0; i < numStates; i++) {
+                transitions[row][i] = Math.log(nonNormalizedValues[i] / sum);
+            }
+        }
+        return transitions;
+    }
     
     /**
      * Given a list of observations generated (possibly NOT from this particular HMM), compute the forward
@@ -186,15 +186,15 @@ class NormalHiddenMarkovModel {
      * @param logY This is log(y) for some y.
      * @return The value log(x+y).
      */
-	public double logAdd(double logX, double logY) {
-		if (logY > logX) {
-			double temp = logX;
-			logX = logY;
-			logY = temp;
-		}
-		if (logX == Double.NEGATIVE_INFINITY) { return logX; }
-		double negDiff = logY - logX;
-		if (negDiff < -20) { return logX; }
-		return logX + java.lang.Math.log(1.0 + java.lang.Math.exp(negDiff));
-	}
+    public double logAdd(double logX, double logY) {
+        if (logY > logX) {
+            double temp = logX;
+            logX = logY;
+            logY = temp;
+        }
+        if (logX == Double.NEGATIVE_INFINITY) { return logX; }
+        double negDiff = logY - logX;
+        if (negDiff < -20) { return logX; }
+        return logX + java.lang.Math.log(1.0 + java.lang.Math.exp(negDiff));
+    }
 }
