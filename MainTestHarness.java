@@ -27,7 +27,7 @@ public class MainTestHarness {
         boolean doSingleSourceGaussian = false;     // Will usually be false from now on
         boolean doDistributionTest = true;
         if (doSingleSourceGaussian) {
-            System.out.println("Now testing with a one-state, Gaussian source.");
+            System.out.println("Now testing with a one-state, Gaussian sourc.");
             conductSingleGaussianSourceTests();
         }
         System.out.println("Now testing with an HMM Gaussian source.");
@@ -52,6 +52,7 @@ public class MainTestHarness {
         System.out.println("Here, detection tests are from HMMs with " + numHMMStates + " states.");
         if (doDistributionTest) {
             List<Double> rates = new ArrayList<Double>();
+            List<Double> ratesWithoutMaxIterations = new ArrayList<Double>();
             for (int k = 0; k < 100; k++) {
                 System.out.println("On test " + k);
                 NormalDistribution[] benignNormals = new NormalDistribution[numHMMStates];
@@ -63,10 +64,16 @@ public class MainTestHarness {
                 NormalHiddenMarkovModel hmm1 = new NormalHiddenMarkovModel(numHMMStates, benignNormals);
                 NormalHiddenMarkovModel hmm2 = new NormalHiddenMarkovModel(numHMMStates, malignantNormals);
                 double falseAlarmRate = testSinglePageHMMGaussian(hmm1, hmm2, numSensors);               
-                rates.add(falseAlarmRate);
+                rates.add(falseAlarmRate); 
+                if (falseAlarmRate >= 0.0) {
+                    ratesWithoutMaxIterations.add(falseAlarmRate);
+                }
+                // Note: I changed the method to return -1 if maxIterations has occurred (distributions are too similar)
             }
             System.out.println("Done with single Page's test. Here are the f.a. rates:");
             System.out.println(rates);
+            System.out.println("And the ones WITHOUT -1, i.e., max iterations. Length = " + ratesWithoutMaxIterations.size());
+            System.out.println(ratesWithoutMaxIterations);
         } else {
             NormalDistribution[] benignNormals = new NormalDistribution[numHMMStates];
             NormalDistribution[] malignantNormals = new NormalDistribution[numHMMStates];
@@ -481,7 +488,6 @@ public class MainTestHarness {
                     // These take too long
                     //double benignObservation = hmm1.getLogForwardProbability(clampedObservations);
                     //double malignantObservation = hmm2.getLogForwardProbability(clampedObservations);
-                    
                     // So let's do it a faster way.
                     if (clampedObservations.size() == 1) {
                         cachedLogForwardProbabilities1 = hmm1.cachedLogForwardProbabilityBaseCase(observation);
@@ -510,7 +516,11 @@ public class MainTestHarness {
                         if (iteration < threshForChange) {
                             totalFalseAlarms++;
                         } else {
-                            if (iteration >= MAX_PAGE_ITERATIONS) System.out.println("Note: we're at max iterations");
+                            if (iteration >= MAX_PAGE_ITERATIONS) {
+                                System.out.println("Note: we're at max iterations. Let's break out of this and "
+                                        + "return -1 for false alarms because these distributions are too similar.");
+                                return -1.0;
+                            }
                             pageTestDone = true;
                             totalDetectionDelay += (iteration - 500);
                             //System.out.println("total detection delay = " + totalDetectionDelay);
@@ -532,9 +542,11 @@ public class MainTestHarness {
         return falseAlarmRates.get(0);
     }
     
+
     ////////////////////////////
     // Single-source Gaussian //
     ////////////////////////////
+
 
     /**
      * This will be perhaps the most interesting part of this code: the Running Consensus scheme. One
