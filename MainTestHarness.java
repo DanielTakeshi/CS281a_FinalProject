@@ -91,10 +91,10 @@ public class MainTestHarness {
             //testSinglePageHMMGaussian(hmm1, hmm2, numSensors);
             //System.out.println("\n\nNow doing Page's test in parallel ...");
             //testParallelPageHMMGaussian(hmm1, hmm2, numSensors);
-            System.out.println("\n\nNow doing the centralized entity Test ...");
-            testIdealCenterHMMGaussian(hmm1, hmm2, numSensors);
-            //System.out.println("\n\nNow doing running consensus ...");
-            //testRunningConsensusHMMGaussian(hmm1, hmm2, numSensors);
+            //System.out.println("\n\nNow doing the centralized entity Test ...");
+            //testIdealCenterHMMGaussian(hmm1, hmm2, numSensors);
+            System.out.println("\n\nNow doing running consensus ...");
+            testRunningConsensusHMMGaussian(hmm1, hmm2, numSensors);
         }
     }
     
@@ -129,6 +129,7 @@ public class MainTestHarness {
             int totalSamples = 0;
             int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
+
             for (int trial = 1; trial <= HMM_GAUSSIAN_TRIALS; trial++) {
                 if (trial % 250 == 0) System.out.println("trial " + trial);
                 hmm1.resetState();
@@ -136,7 +137,6 @@ public class MainTestHarness {
                 boolean pageTestDone = false;
                 int threshForChange = 500;
                 int iteration = 0;
-
                  // Each of the M elements here has its own "clamped observation" list. Also need to set up cache.
                 ArrayList<ArrayList<Double>> listOfClampedObservations = new ArrayList<ArrayList<Double>>();
                 ArrayList<double[]> cachedLogForwardProbs1 = new ArrayList<double[]>();
@@ -148,6 +148,7 @@ public class MainTestHarness {
                     cachedLogForwardProbs2.add(new double[hmm2.getNumStates()]);
                 }               
                 double[] previousScores = new double[M];
+
                 while (!pageTestDone) {
                     double[] observations = new double[M];
                     if (iteration < threshForChange) {
@@ -167,23 +168,38 @@ public class MainTestHarness {
                     double[] logLikelihoods = new double[M];
                     for (int i = 0; i < M; i++) {
                         listOfClampedObservations.get(i).add(observations[i]);  // Don't forget to add observations!
+                        double standardNormalizerLogLikelihood = Double.NEGATIVE_INFINITY;
+                        double anomalousNormalizerLogLikelihood = Double.NEGATIVE_INFINITY;
                         if (listOfClampedObservations.get(i).size() == 1) {
                             cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbabilityBaseCase(observations[i]));
                             cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbabilityBaseCase(observations[i]));
+                            standardNormalizerLogLikelihood = 0.0;
+                            anomalousNormalizerLogLikelihood = 0.0;
                         } else {
+                            double[] oldCache1 = cachedLogForwardProbs1.get(i);
+                            for (int x = 0; x < oldCache1.length; x++) {
+                                standardNormalizerLogLikelihood = logSum(standardNormalizerLogLikelihood, oldCache1[x]);
+                            }
+                            double[] oldCache2 = cachedLogForwardProbs2.get(i);
+                            for (int x = 0; x < oldCache2.length; x++) {
+                                anomalousNormalizerLogLikelihood = logSum(anomalousNormalizerLogLikelihood, oldCache2[x]);
+                            }
                             cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbability(cachedLogForwardProbs1.get(i), observations[i]));
                             cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbability(cachedLogForwardProbs2.get(i), observations[i]));
                         }
-                        double benignObservation = Double.NEGATIVE_INFINITY;
+                        double standardFullLogLikelihood = Double.NEGATIVE_INFINITY;
                         for (int state = 0; state < hmm1.getNumStates(); state++) {
-                            benignObservation = logSum(benignObservation, cachedLogForwardProbs1.get(i)[state]);
+                            standardFullLogLikelihood = logSum(standardFullLogLikelihood, cachedLogForwardProbs1.get(i)[state]);
                         }
-                        double malignantObservation = Double.NEGATIVE_INFINITY;
+                        double anomalousFullLogLikelihood = Double.NEGATIVE_INFINITY;
                         for (int state = 0; state < hmm2.getNumStates(); state++) {
-                            malignantObservation = logSum(malignantObservation, cachedLogForwardProbs2.get(i)[state]);
+                            anomalousFullLogLikelihood = logSum(anomalousFullLogLikelihood, cachedLogForwardProbs2.get(i)[state]);
                         }
-                        //logLikelihoods[i] = M * Math.log(n2.density(observations[i]) / n1.density(observations[i]));
-                        logLikelihoods[i] = M * (malignantObservation - benignObservation); // I really hope this is correct.
+                        //logLikelihoods[i] = M * Math.log(n2.density(observations[i]) / n1.density(observations[i])); // Old way 1
+                        //logLikelihoods[i] = M * (malignantObservation - benignObservation); // Old way 2
+                        double likelihoodTerm = (anomalousFullLogLikelihood - anomalousNormalizerLogLikelihood) -
+                                (standardFullLogLikelihood - standardNormalizerLogLikelihood);
+                        logLikelihoods[i] = M * likelihoodTerm;
                     }
                     // Now pick the 5 pairs we need to exchange
                     for (int pair = 0; pair < 5; pair++) {
