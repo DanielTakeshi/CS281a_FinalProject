@@ -27,7 +27,7 @@ public class MainTestHarness {
     public static void main(String[] args) {
         boolean doSingleSourceGaussian = false;     // Will usually be false from now on
         boolean doHMMSourceGaussian = true;
-        boolean doDistributionTest = true;
+        boolean doDistributionTest = false;
         if (doSingleSourceGaussian) {
             System.out.println("Now testing with a one-state, Gaussian source.");
             conductSingleGaussianSourceTests();
@@ -350,6 +350,7 @@ public class MainTestHarness {
             int totalSamples = 0;
             int totalDetectionDelay = 0;
             System.out.println("Currently using threshold gamma = " + threshold);
+
             for (int trial = 1; trial <= HMM_GAUSSIAN_TRIALS; trial++) {
                 if (trial % 250 == 0) System.out.println("trial " + trial);
                 hmm1.resetState();
@@ -357,7 +358,6 @@ public class MainTestHarness {
                 boolean pageTestDone = false;
                 int threshForChange = 500;
                 int iteration = 0;
-
                 // Each of the M elements here has its own "clamped observation" list. Also need to set up cache.
                 ArrayList<ArrayList<Double>> listOfClampedObservations = new ArrayList<ArrayList<Double>>();
                 ArrayList<double[]> cachedLogForwardProbs1 = new ArrayList<double[]>();
@@ -386,26 +386,41 @@ public class MainTestHarness {
                         }
                     }
                     double[] currentScores = new double[M];
-                    for (int i = 0; i < M; i++) {
+                    for (int i = 0; i < M; i++) {   // Do the single sensor case M times, independent of each other
                         listOfClampedObservations.get(i).add(observation[i]);
+                        double standardNormalizerLogLikelihood = Double.NEGATIVE_INFINITY;
+                        double anomalousNormalizerLogLikelihood = Double.NEGATIVE_INFINITY;
                         if (listOfClampedObservations.get(i).size() == 1) {
                             cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbabilityBaseCase(observation[i]));
                             cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbabilityBaseCase(observation[i]));
+                            standardNormalizerLogLikelihood = 0.0;
+                            anomalousNormalizerLogLikelihood = 0.0;
                         } else {
-                            // Note: listOfClampedObservations.get(i) is like List<Double> observations, so only need last one.
+                            double[] oldCache1 = cachedLogForwardProbs1.get(i);
+                            assert oldCache1.length > 0 : "Problem: oldCache1.length = " + oldCache1.length;
+                            for (int x = 0; x < oldCache1.length; x++) {
+                                standardNormalizerLogLikelihood = logSum(standardNormalizerLogLikelihood, oldCache1[x]);
+                            }
+                            double[] oldCache2 = cachedLogForwardProbs2.get(i);
+                            assert oldCache2.length > 0 : "Problem: oldCache2.length = " + oldCache2.length;
+                            for (int x = 0; x < oldCache2.length; x++) {
+                                anomalousNormalizerLogLikelihood = logSum(anomalousNormalizerLogLikelihood, oldCache2[x]);
+                            }
                             cachedLogForwardProbs1.set(i, hmm1.cachedLogForwardProbability(cachedLogForwardProbs1.get(i), observation[i]));
                             cachedLogForwardProbs2.set(i, hmm2.cachedLogForwardProbability(cachedLogForwardProbs2.get(i), observation[i]));
                         }
-                        double benignObservation = Double.NEGATIVE_INFINITY;
+                        double standardFullLogLikelihood = Double.NEGATIVE_INFINITY;
                         for (int state = 0; state < hmm1.getNumStates(); state++) {
-                            benignObservation = logSum(benignObservation, cachedLogForwardProbs1.get(i)[state]);
+                            standardFullLogLikelihood = logSum(standardFullLogLikelihood, cachedLogForwardProbs1.get(i)[state]);
                         }
-                        double malignantObservation = Double.NEGATIVE_INFINITY;
+                        double anomalousFullLogLikelihood = Double.NEGATIVE_INFINITY;
                         for (int state = 0; state < hmm2.getNumStates(); state++) {
-                            malignantObservation = logSum(malignantObservation, cachedLogForwardProbs2.get(i)[state]);
+                            anomalousFullLogLikelihood = logSum(anomalousFullLogLikelihood, cachedLogForwardProbs2.get(i)[state]);
                         }
-                        double likelihoodComponent = malignantObservation - benignObservation;
-                        double currentScore = Math.max(0.0, previousScores[i] + likelihoodComponent);
+                        double likelihoodTerm = (anomalousFullLogLikelihood - anomalousNormalizerLogLikelihood) -
+                                (standardFullLogLikelihood - standardNormalizerLogLikelihood);
+                        assert !Double.isNaN(likelihoodTerm);
+                        double currentScore = Math.max(0.0, previousScores[i] + likelihoodTerm);
                         currentScores[i] = currentScore;
                     }
 
