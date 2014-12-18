@@ -67,8 +67,8 @@ public class MainTestHarness {
                 }
                 NormalHiddenMarkovModel hmm1 = new NormalHiddenMarkovModel(numHMMStates, benignNormals);
                 NormalHiddenMarkovModel hmm2 = new NormalHiddenMarkovModel(numHMMStates, malignantNormals);
-                double falseAlarmRate = testSinglePageHMMGaussian(hmm1, hmm2, numSensors);               
-                rates.add(falseAlarmRate); 
+                double falseAlarmRate = testSinglePageHMMGaussian(hmm1, hmm2, numSensors, doDistributionTest);               
+                rates.add(falseAlarmRate);
                 if (falseAlarmRate >= 0.0) {
                     ratesWithoutMaxIterations.add(falseAlarmRate);
                 }
@@ -88,7 +88,7 @@ public class MainTestHarness {
             NormalHiddenMarkovModel hmm1 = new NormalHiddenMarkovModel(numHMMStates, benignNormals);
             NormalHiddenMarkovModel hmm2 = new NormalHiddenMarkovModel(numHMMStates, malignantNormals);
             System.out.println("\n\nNow doing a single Page's test ...");
-            testSinglePageHMMGaussian(hmm1, hmm2, numSensors);
+            testSinglePageHMMGaussian(hmm1, hmm2, numSensors, doDistributionTest);
             System.out.println("\n\nNow doing Page's test in parallel ...");
             testParallelPageHMMGaussian(hmm1, hmm2, numSensors);
             System.out.println("\n\nNow doing the centralized entity Test ...");
@@ -492,8 +492,9 @@ public class MainTestHarness {
      * @param hmm1
      * @param hmm2
      * @param M
+     * @param breakIfMax Used to distinguish between if we're really running it versus gathering data on false alarms only
      */
-    public static double testSinglePageHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M)  {
+    public static double testSinglePageHMMGaussian(NormalHiddenMarkovModel hmm1, NormalHiddenMarkovModel hmm2, int M, boolean breakIfMax)  {
         List<Double> falseAlarmRates = new ArrayList<Double>();
         List<Double> detectionDelays = new ArrayList<Double>();       
         for (double threshold = 1.0; threshold <= HMM_GAUSSIAN_THRESH; threshold += HMM_GAUSSIAN_INCR) {
@@ -575,7 +576,9 @@ public class MainTestHarness {
                             if (iteration >= MAX_PAGE_ITERATIONS) {
                                 System.out.println("Note: we're at max iterations. Let's break out of this and "
                                         + "return -1 for false alarms because these distributions are too similar.");
-                                return -1.0;
+                                if (breakIfMax) {
+                                    return -1.0;
+                                }
                             }
                             pageTestDone = true;
                             totalDetectionDelay += (iteration - 500);
